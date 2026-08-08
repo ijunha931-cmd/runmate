@@ -1458,9 +1458,12 @@ footer div.active{
             <button class="detail-btn" id="roomJoinBtn" onclick="handleRoomJoin()">참여하기</button>
             <a class="room-kakao-btn" id="roomKakaoBtn" style="display:none;" target="_blank" rel="noopener">오픈카톡으로 이동</a>
 
-            <div class="room-safety-row">
+            <div class="room-safety-row" id="roomGuestActions">
                 <button onclick="reportRoom()">🚩 이 방 신고하기</button>
                 <button onclick="blockHost()">🚫 방장 차단하기</button>
+            </div>
+            <div class="room-safety-row" id="roomHostActions" style="display:none;">
+                <button onclick="deleteRoom()" style="color:#c62828;">🗑 이 방 삭제하기</button>
             </div>
         </div>
     </div>
@@ -2076,6 +2079,7 @@ function renderRoomDetail(room){
     const filled = room.participants.length;
     const isFull = filled >= room.capacity;
     const joined = myUid && room.participants.some(p => participantUid(p) === myUid);
+    const isHost = room.hostUid ? (room.hostUid === myUid) : (room.hostNickname === myNickname);
 
     document.getElementById('roomDetailStatus').textContent = isFull ? '마감' : '모집중';
     document.getElementById('roomDetailTitle').textContent = room.title;
@@ -2087,10 +2091,14 @@ function renderRoomDetail(room){
     document.getElementById('roomParticipantsList').innerHTML =
         room.participants.map(p => `<span class="room-participant-chip">${participantNickname(p)}</span>`).join('');
 
+    // 방장이면 삭제 버튼, 참여자(또는 방문자)면 신고/차단 버튼을 보여줘요
+    document.getElementById('roomHostActions').style.display = isHost ? 'flex' : 'none';
+    document.getElementById('roomGuestActions').style.display = isHost ? 'none' : 'flex';
+
     const joinBtn = document.getElementById('roomJoinBtn');
     const kakaoBtn = document.getElementById('roomKakaoBtn');
 
-    if (joined) {
+    if (isHost || joined) {
         joinBtn.style.display = 'none';
         kakaoBtn.style.display = 'block';
         kakaoBtn.href = room.kakaoLink || '#';
@@ -2209,6 +2217,33 @@ function blockHost(){
     closeRoomDetail();
     renderRoomsList();
     alert(`'${room.hostNickname}'님을 차단했어요.`);
+}
+
+async function deleteRoom(){
+    if (!firebaseReady) {
+        alert('아직 서버 연결이 안 됐어요.');
+        return;
+    }
+    const room = rooms.find(r => r.id === currentRoomId);
+    if (!room) return;
+
+    const isHost = room.hostUid ? (room.hostUid === myUid) : (room.hostNickname === myNickname);
+    if (!isHost) {
+        alert('방장만 삭제할 수 있어요.');
+        return;
+    }
+
+    const confirmed = confirm(`'${room.title}' 방을 삭제할까요?\n\n삭제하면 되돌릴 수 없고, 참여자들에게도 더 이상 보이지 않아요.`);
+    if (!confirmed) return;
+
+    try {
+        await db.collection('rooms').doc(room.id).delete();
+        closeRoomDetail();
+        alert('방이 삭제됐어요.');
+    } catch (e) {
+        console.error(e);
+        alert('삭제 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
+    }
 }
 
 function shareCourse(id, event){
