@@ -1175,6 +1175,10 @@ footer div.active{
 }
 </style>
 
+<!-- Firebase (방 기능 실시간 동기화용) -->
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+
 </head>
 
 <body>
@@ -1604,31 +1608,49 @@ let userLocation = null;
 let myNickname = null;
 let currentRoomId = null;
 
-// 데모용 초기 방 몇 개 (실제 서비스에서는 서버에서 불러옴 - 지금은 화면 설계 단계라 메모리에만 존재)
-let rooms = [
-    {
-        id: 'room1',
-        locationId: 'haeundae',
-        title: '초보 환영! 가볍게 5km 뛰어요',
-        hostNickname: '준하',
-        datetime: '2026-08-10T08:00',
-        capacity: 6,
-        participants: ['준하', '민수'],
-        description: '천천히 페이스 맞춰서 뛰어요. 초보자도 환영입니다!',
-        kakaoLink: 'https://open.kakao.com/o/example1'
-    },
-    {
-        id: 'room2',
-        locationId: 'gwangalli',
-        title: '퇴근 후 야경 러닝',
-        hostNickname: '수영',
-        datetime: '2026-08-08T19:30',
-        capacity: 4,
-        participants: ['수영', '지은', '현우', '민지'],
-        description: '광안대교 야경 보면서 가볍게 뛰고 커피 한잔해요',
-        kakaoLink: 'https://open.kakao.com/o/example2'
-    }
-];
+// ===== Firebase 설정 =====
+// 👇 여기에 본인 Firebase 프로젝트의 설정값을 붙여넣어주세요 (Firebase 콘솔 > 프로젝트 설정 > 웹 앱)
+const firebaseConfig = {
+    apiKey: "AIzaSyAgk7ugsijC7NFiSxnmp8_rOymtvl0w-lY",
+    authDomain: "runmate-1835e.firebaseapp.com",
+    projectId: "runmate-1835e",
+    storageBucket: "runmate-1835e.firebasestorage.app",
+    messagingSenderId: "404077795906",
+    appId: "1:404077795906:web:6c55c9e34caef48fe66bdb"
+};
+
+let db = null;
+let firebaseReady = false;
+
+try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    firebaseReady = true;
+} catch (e) {
+    console.warn('Firebase 설정이 아직 입력되지 않았어요. firebaseConfig 값을 채워주세요.', e);
+}
+
+// 방 데이터는 이제 Firestore와 실시간으로 동기화되는 로컬 캐시입니다.
+// (firebaseConfig가 비어있으면 방 목록은 항상 비어있는 상태로 표시돼요)
+let rooms = [];
+
+function initRoomsListener(){
+    if (!firebaseReady) return;
+    db.collection('rooms').onSnapshot((snapshot) => {
+        rooms = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // 지금 열려있는 화면이 있으면 새 데이터로 다시 그려주기
+        if (document.getElementById('detailOverlay').classList.contains('open')) {
+            renderRoomsList();
+        }
+        if (document.getElementById('roomDetailOverlay').classList.contains('open') && currentRoomId) {
+            const room = rooms.find(r => r.id === currentRoomId);
+            if (room) renderRoomDetail(room);
+        }
+    }, (err) => {
+        console.error('방 데이터를 불러오는 중 오류가 발생했어요:', err);
+    });
+}
 
 function ensureNickname(){
     if (!myNickname) {
@@ -1639,6 +1661,7 @@ function ensureNickname(){
     }
     return myNickname;
 }
+
 
 // ===== 유틸 =====
 function starString(level){
@@ -1873,7 +1896,12 @@ function closeCreateRoom(){
     document.getElementById('createRoomOverlay').classList.remove('open');
 }
 
-function submitCreateRoom(){
+async function submitCreateRoom(){
+    if (!firebaseReady) {
+        alert('아직 서버 연결이 안 됐어요. Firebase 설정값을 먼저 채워주세요.');
+        return;
+    }
+
     const nickname = ensureNickname();
     if (!nickname) return;
 
@@ -1891,20 +1919,29 @@ function submitCreateRoom(){
     const course = courses.find(c => c.id === currentDetailId);
     if (!course) return;
 
-    rooms.push({
-        id: 'room_' + Date.now(),
-        locationId: course.id,
-        title,
-        hostNickname: nickname,
-        datetime,
-        capacity,
-        participants: [nickname],
-        description,
-        kakaoLink
-    });
+    const submitBtn = document.querySelector('#createRoomOverlay .detail-btn');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '만드는 중...'; }
 
-    closeCreateRoom();
-    renderRoomsList();
+    try {
+        await db.collection('rooms').add({
+            locationId: course.id,
+            title,
+            hostNickname: nickname,
+            datetime,
+            capacity,
+            participants: [nickname],
+            description,
+            kakaoLink,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        closeCreateRoom();
+        // 방 목록은 실시간 리스너가 자동으로 갱신해줘요
+    } catch (e) {
+        console.error(e);
+        alert('방을 만드는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
+    } finally {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '방 만들기'; }
+    }
 }
 
 function openRoomDetail(id){
@@ -1955,16 +1992,35 @@ function renderRoomDetail(room){
     }
 }
 
-function handleRoomJoin(){
+async function handleRoomJoin(){
+    if (!firebaseReady) {
+        alert('아직 서버 연결이 안 됐어요. Firebase 설정값을 먼저 채워주세요.');
+        return;
+    }
+
     const nickname = ensureNickname();
     if (!nickname) return;
     const room = rooms.find(r => r.id === currentRoomId);
     if (!room) return;
-    if (!room.participants.includes(nickname) && room.participants.length < room.capacity) {
-        room.participants.push(nickname);
+
+    if (room.participants.includes(nickname) || room.participants.length >= room.capacity) {
+        renderRoomDetail(room);
+        return;
     }
-    renderRoomDetail(room);
-    renderRoomsList();
+
+    const joinBtn = document.getElementById('roomJoinBtn');
+    if (joinBtn) { joinBtn.disabled = true; joinBtn.textContent = '참여하는 중...'; }
+
+    try {
+        await db.collection('rooms').doc(room.id).update({
+            participants: firebase.firestore.FieldValue.arrayUnion(nickname)
+        });
+        // 화면은 실시간 리스너가 자동으로 갱신해줘요
+    } catch (e) {
+        console.error(e);
+        alert('참여하는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
+        if (joinBtn) { joinBtn.disabled = false; joinBtn.textContent = '참여하기'; }
+    }
 }
 
 function shareCourse(id, event){
@@ -2242,6 +2298,7 @@ renderRegionList();
 updateFilterLabel();
 renderTodayPick();
 render();
+initRoomsListener();
 </script>
 
 </body>
