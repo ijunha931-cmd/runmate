@@ -484,6 +484,63 @@ button.detail-btn:active{
     background:#1FA89B;
 }
 
+button.detail-btn.warm{
+    background:#FF6B47;
+}
+
+button.detail-btn.warm:active{
+    background:#E85A38;
+}
+
+button.detail-btn:disabled{
+    opacity:.6;
+    cursor:default;
+}
+
+.room-checkin-section{
+    margin-top:22px;
+    padding-top:18px;
+    border-top:1px solid #f0f0f0;
+}
+
+.room-checkin-note{
+    font-size:11.5px;
+    color:#9A9D97;
+    margin-bottom:10px;
+    line-height:1.5;
+}
+
+.checkin-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-bottom:6px;
+}
+
+.checkin-row .room-participant-chip{
+    flex:1;
+    min-width:0;
+}
+
+.peer-confirm-btn{
+    background:white;
+    border:1px solid #E8E6E1;
+    color:#6E7570;
+    font-size:11.5px;
+    padding:5px 10px;
+    border-radius:20px;
+    cursor:pointer;
+    flex-shrink:0;
+    white-space:nowrap;
+}
+
+.peer-confirm-btn.confirmed{
+    background:#E3F9F6;
+    border-color:#9FE6DC;
+    color:#1FA89B;
+}
+
 /* ===== 하단 위젯 (카드 리스트 아래, 세로로 쌓기) ===== */
 .widgets{
     margin-top:24px;
@@ -1513,6 +1570,16 @@ footer div.active{
             <button class="detail-btn" id="roomJoinBtn" onclick="handleRoomJoin()">참여하기</button>
             <a class="room-kakao-btn" id="roomKakaoBtn" style="display:none;" target="_blank" rel="noopener">오픈카톡으로 이동</a>
 
+            <div class="room-checkin-section" id="roomCheckinSection" style="display:none;">
+                <div class="rooms-header">
+                    <h3>🏁 완주 인증</h3>
+                    <span id="roomCheckinCount" style="font-size:12px;color:#9A9D97;"></span>
+                </div>
+                <p class="room-checkin-note">📍 = 인증 순간 위치가 코스 근처였어요 · 동료확인 = 같이 뛴 사람이 직접 확인해준 거예요</p>
+                <div id="roomCheckinList" style="margin-bottom:12px;"></div>
+                <button class="detail-btn warm" id="roomCheckinBtn" onclick="handleCheckin()">✅ 완주 인증하기</button>
+            </div>
+
             <div class="room-safety-row" id="roomGuestActions">
                 <button onclick="reportRoom()">🚩 이 방 신고하기</button>
                 <button onclick="blockHost()">🚫 방장 차단하기</button>
@@ -2281,6 +2348,47 @@ function renderRoomDetail(room){
         joinBtn.disabled = false;
         kakaoBtn.style.display = 'none';
     }
+
+    // 약속 시간이 지났고, 참여자(또는 방장)면 완주 인증 섹션을 보여줘요
+    // 정원이 다 안 찼어도 상관없이, 실제로 그 시간에 만난 사람들이 인증하면 돼요
+    const checkinSection = document.getElementById('roomCheckinSection');
+    const timeReached = isMeetupTimeReached(room);
+
+    if (timeReached && (joined || isHost)) {
+        checkinSection.style.display = 'block';
+        const completedList = room.completedBy || [];
+        document.getElementById('roomCheckinCount').textContent = `${completedList.length}명 인증`;
+
+        document.getElementById('roomCheckinList').innerHTML = completedList.length
+            ? completedList.map(p => {
+                const locationBadge = p.locationVerified ? '📍 ' : '';
+                const confirmedCount = (p.confirmedBy || []).length;
+                const confirmedText = confirmedCount > 0 ? ` · 동료확인 ${confirmedCount}` : '';
+                const isMe = myUid && p.uid === myUid;
+                const iConfirmed = myUid && (p.confirmedBy || []).includes(myUid);
+
+                const confirmBtnHtml = (!isMe && myUid)
+                    ? `<button class="peer-confirm-btn ${iConfirmed ? 'confirmed' : ''}" onclick="confirmPeer('${p.uid}', event)" ${iConfirmed ? 'disabled' : ''}>${iConfirmed ? '👍 확인함' : '👍 확인'}</button>`
+                    : '';
+
+                return `<div class="checkin-row">
+                    <span class="room-participant-chip">🏁 ${locationBadge}${participantNickname(p)}${confirmedText}</span>
+                    ${confirmBtnHtml}
+                </div>`;
+            }).join('')
+            : '<span style="font-size:12.5px;color:#aaa;">아직 인증한 사람이 없어요</span>';
+
+        const checkinBtn = document.getElementById('roomCheckinBtn');
+        if (hasCheckedIn(room)) {
+            checkinBtn.textContent = '✅ 인증 완료';
+            checkinBtn.disabled = true;
+        } else {
+            checkinBtn.textContent = '✅ 완주 인증하기';
+            checkinBtn.disabled = false;
+        }
+    } else {
+        checkinSection.style.display = 'none';
+    }
 }
 
 async function handleRoomJoin(){
@@ -2321,6 +2429,134 @@ async function handleRoomJoin(){
         console.error(e);
         alert('참여하는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
         if (joinBtn) { joinBtn.disabled = false; joinBtn.textContent = '참여하기'; }
+    }
+}
+
+// ===== 완주 인증 =====
+function isMeetupTimeReached(room){
+    if (!room.datetime) return false;
+    return new Date(room.datetime).getTime() <= Date.now();
+}
+
+function hasCheckedIn(room){
+    return myUid && (room.completedBy || []).some(p => participantUid(p) === myUid);
+}
+
+async function handleCheckin(){
+    if (!firebaseReady) {
+        alert('아직 서버 연결이 안 됐어요.');
+        return;
+    }
+
+    const nickname = ensureNickname();
+    if (!nickname) return;
+
+    let uid;
+    try {
+        uid = await ensureAuth();
+    } catch (e) {
+        alert('로그인 처리 중 문제가 생겼어요. 잠시 후 다시 시도해주세요.');
+        return;
+    }
+
+    const room = rooms.find(r => r.id === currentRoomId);
+    if (!room) return;
+
+    const isParticipant = room.participants.some(p => participantUid(p) === uid);
+    const isHost = room.hostUid ? (room.hostUid === uid) : (room.hostNickname === myNickname);
+    if (!isParticipant && !isHost) {
+        alert('이 방에 참여한 사람만 완주 인증을 할 수 있어요.');
+        return;
+    }
+
+    if (hasCheckedIn(room)) return;
+
+    const btn = document.getElementById('roomCheckinBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '위치 확인 중...'; }
+
+    const course = courses.find(c => c.id === room.locationId);
+
+    const finalizeCheckin = async (locationVerified) => {
+        if (btn) { btn.textContent = '인증하는 중...'; }
+        try {
+            await db.collection('rooms').doc(room.id).update({
+                completedBy: firebase.firestore.FieldValue.arrayUnion({
+                    uid,
+                    nickname,
+                    locationVerified,
+                    confirmedBy: []
+                })
+            });
+            // 화면은 실시간 리스너가 자동으로 갱신해줘요
+        } catch (e) {
+            console.error(e);
+            alert('인증 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
+            if (btn) { btn.disabled = false; btn.textContent = '✅ 완주 인증하기'; }
+        }
+    };
+
+    // 인증하는 그 순간 위치를 한 번만 확인해요 (실시간 추적 아님)
+    if (navigator.geolocation && course) {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const dist = haversineKm(pos.coords.latitude, pos.coords.longitude, course.lat, course.lng);
+                finalizeCheckin(dist <= 3); // 코스 중심에서 3km 이내면 위치 확인됨으로 처리
+            },
+            () => {
+                // 위치 권한 거부/실패해도 인증 자체는 막지 않아요 (자율 인증으로 처리)
+                finalizeCheckin(false);
+            },
+            { timeout: 8000 }
+        );
+    } else {
+        finalizeCheckin(false);
+    }
+}
+
+// 다른 참여자가 "이 사람 봤어요"를 눌러주는 동료 확인
+// 동시에 여러 명이 눌러도 안전하게 처리하려고 트랜잭션으로 묶었어요
+async function confirmPeer(targetUid, event){
+    if (event) event.stopPropagation();
+    if (!firebaseReady) {
+        alert('아직 서버 연결이 안 됐어요.');
+        return;
+    }
+
+    let myConfirmUid;
+    try {
+        myConfirmUid = await ensureAuth();
+    } catch (e) {
+        alert('로그인 처리 중 문제가 생겼어요. 잠시 후 다시 시도해주세요.');
+        return;
+    }
+
+    if (myConfirmUid === targetUid) {
+        alert('본인은 확인할 수 없어요.');
+        return;
+    }
+
+    const roomRef = db.collection('rooms').doc(currentRoomId);
+    try {
+        await db.runTransaction(async (tx) => {
+            const doc = await tx.get(roomRef);
+            if (!doc.exists) throw new Error('방을 찾을 수 없어요.');
+            const data = doc.data();
+            const completedBy = data.completedBy || [];
+            const idx = completedBy.findIndex(p => p.uid === targetUid);
+            if (idx === -1) throw new Error('해당 참여자의 인증 기록을 찾을 수 없어요.');
+
+            const entry = completedBy[idx];
+            const confirmedBy = entry.confirmedBy || [];
+            if (confirmedBy.includes(myConfirmUid)) return; // 이미 확인했으면 그냥 넘어가요
+
+            const newCompletedBy = completedBy.slice();
+            newCompletedBy[idx] = { ...entry, confirmedBy: [...confirmedBy, myConfirmUid] };
+            tx.update(roomRef, { completedBy: newCompletedBy });
+        });
+        // 화면은 실시간 리스너가 자동으로 갱신해줘요
+    } catch (e) {
+        console.error(e);
+        alert('확인 처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
     }
 }
 
