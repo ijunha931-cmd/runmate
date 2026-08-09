@@ -1428,9 +1428,9 @@ footer div.active{
             <label class="room-form-label">한줄 소개</label>
             <textarea id="roomDescInput" class="room-form-input" rows="3" placeholder="어떤 분위기의 모임인지 알려주세요"></textarea>
 
-            <label class="room-form-label">오픈카톡 링크</label>
+            <label class="room-form-label">오픈카톡 링크 *</label>
             <input type="text" id="roomKakaoInput" class="room-form-input" placeholder="https://open.kakao.com/o/...">
-
+            <p style="font-size:11.5px;color:#9A9D97;margin-top:4px;">참여자가 참여 확정 후 이 링크로 이동해요. 미리 오픈채팅방을 만들어서 링크를 준비해주세요.</p>
             <button class="detail-btn" style="margin-top:24px;" onclick="submitCreateRoom()">방 만들기</button>
         </div>
     </div>
@@ -2022,6 +2022,16 @@ async function submitCreateRoom(){
 
     if (!title || !datetime) {
         alert('모임 제목과 날짜/시간은 꼭 입력해주세요.');
+        return;
+    }
+
+    if (!kakaoLink) {
+        alert('오픈카톡 링크를 입력해주세요.\n참여자들이 이 링크로 방장님과 연락하게 돼요.\n\n카카오톡 앱 → 채팅 탭 → 오픈채팅 만들기로 미리 준비해주세요.');
+        return;
+    }
+
+    if (!/^https?:\/\//i.test(kakaoLink)) {
+        alert('오픈카톡 링크가 올바른 형식이 아니에요.\nhttps://open.kakao.com/o/... 형태로 입력해주세요.');
         return;
     }
 
