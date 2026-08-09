@@ -999,7 +999,53 @@ footer div.active{
     color:#c62828;
 }
 
-#createRoomOverlay, #roomDetailOverlay{
+.room-meeting-point{
+    display:flex;
+    align-items:flex-start;
+    gap:8px;
+    background:#E3F9F6;
+    border-radius:10px;
+    padding:12px 14px;
+    margin-bottom:14px;
+    font-size:13.5px;
+    color:#1B1D1B;
+    line-height:1.5;
+}
+
+.room-meeting-point .stat-icon{
+    color:#1FA89B;
+    flex-shrink:0;
+    margin-top:2px;
+}
+
+.my-nickname-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    background:white;
+    border:1px solid #E8E6E1;
+    border-radius:12px;
+    padding:14px 16px;
+    margin:16px 0 8px;
+    font-size:14px;
+    color:#1B1D1B;
+}
+
+.my-nickname-change-btn{
+    background:none;
+    border:1px solid #1FA89B;
+    color:#1FA89B;
+    border-radius:8px;
+    padding:5px 12px;
+    font-size:12.5px;
+    cursor:pointer;
+}
+
+.my-nickname-change-btn:active{
+    background:#E3F9F6;
+}
+
+#createRoomOverlay, #roomDetailOverlay, #myPageOverlay{
     z-index:310;
 }
 
@@ -1428,6 +1474,10 @@ footer div.active{
             <label class="room-form-label">한줄 소개</label>
             <textarea id="roomDescInput" class="room-form-input" rows="3" placeholder="어떤 분위기의 모임인지 알려주세요"></textarea>
 
+            <label class="room-form-label">구체적 집합 장소</label>
+            <input type="text" id="roomMeetingPointInput" class="room-form-input" placeholder="예: 해운대 해수욕장 정문 앞 파출소">
+            <p style="font-size:11.5px;color:#9A9D97;margin-top:4px;">코스 전체가 아니라, 실제로 만날 정확한 위치를 적어주세요.</p>
+
             <label class="room-form-label">오픈카톡 링크 *</label>
             <input type="text" id="roomKakaoInput" class="room-form-input" placeholder="https://open.kakao.com/o/...">
             <p style="font-size:11.5px;color:#9A9D97;margin-top:4px;">참여자가 참여 확정 후 이 링크로 이동해요. 미리 오픈채팅방을 만들어서 링크를 준비해주세요.</p>
@@ -1451,6 +1501,11 @@ footer div.active{
                 <p class="room-capacity-text" id="roomCapacityText"></p>
             </div>
 
+            <div class="room-meeting-point" id="roomMeetingPointWrap" style="display:none;">
+                <span class="stat-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7zm0 9.5c-1.4 0-2.5-1.1-2.5-2.5s1.1-2.5 2.5-2.5 2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5z"/></svg></span>
+                <span id="roomMeetingPointText"></span>
+            </div>
+
             <p class="detail-desc" id="roomDetailDesc"></p>
 
             <div class="room-participants" id="roomParticipantsList"></div>
@@ -1463,12 +1518,43 @@ footer div.active{
                 <button onclick="blockHost()">🚫 방장 차단하기</button>
             </div>
             <div class="room-safety-row" id="roomHostActions" style="display:none;">
-                <button onclick="deleteRoom()" style="color:#c62828;">🗑 이 방 삭제하기</button>
+                <button onclick="openEditRoom()">✏️ 방 수정하기</button>
+                <button onclick="deleteRoom()" style="color:#c62828;">🗑 삭제하기</button>
             </div>
         </div>
     </div>
 
     <!-- 바텀시트: 운동종류 → 지역선택 필터 -->
+    <!-- 마이페이지 -->
+    <div class="detail-overlay" id="myPageOverlay">
+        <div class="detail-header">
+            <button class="detail-back" onclick="closeMyPage()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20v-2z"/></svg></button>
+            <div></div>
+        </div>
+        <div class="detail-body" style="padding-top:70px;">
+            <h2>마이페이지</h2>
+
+            <div class="my-nickname-row">
+                <span id="myPageNickname"></span>
+                <button class="my-nickname-change-btn" onclick="changeNicknameFromMyPage()">변경</button>
+            </div>
+
+            <div class="rooms-section" style="margin-top:26px;">
+                <div class="rooms-header">
+                    <h3>내가 만든 방</h3>
+                </div>
+                <div id="myCreatedRooms"></div>
+            </div>
+
+            <div class="rooms-section">
+                <div class="rooms-header">
+                    <h3>내가 참여한 방</h3>
+                </div>
+                <div id="myJoinedRooms"></div>
+            </div>
+        </div>
+    </div>
+
     <div class="sheet-overlay" id="sheetOverlay" onclick="closeSheet()"></div>
     <div class="bottom-sheet" id="bottomSheet">
         <div class="sheet-handle"></div>
@@ -1732,6 +1818,9 @@ function initRoomsListener(){
             const room = rooms.find(r => r.id === currentRoomId);
             if (room) renderRoomDetail(room);
         }
+        if (document.getElementById('myPageOverlay').classList.contains('open')) {
+            renderMyPage();
+        }
     }, (err) => {
         console.error('방 데이터를 불러오는 중 오류가 발생했어요:', err);
     });
@@ -1982,19 +2071,52 @@ function renderRoomsList(){
     }
 }
 
+let editingRoomId = null;
+
 function openCreateRoom(){
+    editingRoomId = null;
+    document.querySelector('#createRoomOverlay h2').textContent = '방 만들기';
+    document.querySelector('#createRoomOverlay .detail-btn').textContent = '방 만들기';
+
     const course = courses.find(c => c.id === currentDetailId);
     document.getElementById('createRoomCourseLabel').textContent = `📍 ${course ? course.title : ''}`;
     document.getElementById('roomTitleInput').value = '';
     document.getElementById('roomDatetimeInput').value = '';
     document.getElementById('roomCapacityInput').value = '6';
     document.getElementById('roomDescInput').value = '';
+    document.getElementById('roomMeetingPointInput').value = '';
     document.getElementById('roomKakaoInput').value = '';
+    document.getElementById('createRoomOverlay').classList.add('open');
+}
+
+function openEditRoom(){
+    const room = rooms.find(r => r.id === currentRoomId);
+    if (!room) return;
+
+    const isHost = room.hostUid ? (room.hostUid === myUid) : (room.hostNickname === myNickname);
+    if (!isHost) {
+        alert('방장만 수정할 수 있어요.');
+        return;
+    }
+
+    editingRoomId = room.id;
+    document.querySelector('#createRoomOverlay h2').textContent = '방 수정하기';
+    document.querySelector('#createRoomOverlay .detail-btn').textContent = '수정 완료';
+
+    const course = courses.find(c => c.id === room.locationId);
+    document.getElementById('createRoomCourseLabel').textContent = `📍 ${course ? course.title : ''}`;
+    document.getElementById('roomTitleInput').value = room.title || '';
+    document.getElementById('roomDatetimeInput').value = room.datetime || '';
+    document.getElementById('roomCapacityInput').value = String(room.capacity || 6);
+    document.getElementById('roomDescInput').value = room.description || '';
+    document.getElementById('roomMeetingPointInput').value = room.meetingPoint || '';
+    document.getElementById('roomKakaoInput').value = room.kakaoLink || '';
     document.getElementById('createRoomOverlay').classList.add('open');
 }
 
 function closeCreateRoom(){
     document.getElementById('createRoomOverlay').classList.remove('open');
+    editingRoomId = null;
 }
 
 async function submitCreateRoom(){
@@ -2018,6 +2140,7 @@ async function submitCreateRoom(){
     const datetime = document.getElementById('roomDatetimeInput').value;
     const capacity = Number(document.getElementById('roomCapacityInput').value);
     const description = document.getElementById('roomDescInput').value.trim();
+    const meetingPoint = document.getElementById('roomMeetingPointInput').value.trim();
     const kakaoLink = document.getElementById('roomKakaoInput').value.trim();
 
     if (!title || !datetime) {
@@ -2035,10 +2158,36 @@ async function submitCreateRoom(){
         return;
     }
 
+    const submitBtn = document.querySelector('#createRoomOverlay .detail-btn');
+
+    // ===== 수정 모드 =====
+    if (editingRoomId) {
+        const room = rooms.find(r => r.id === editingRoomId);
+        if (room && capacity < room.participants.length) {
+            alert(`이미 ${room.participants.length}명이 참여 중이라, 정원을 그보다 적게 줄일 수 없어요.`);
+            return;
+        }
+
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '수정하는 중...'; }
+        try {
+            await db.collection('rooms').doc(editingRoomId).update({
+                title, datetime, capacity, description, meetingPoint, kakaoLink
+            });
+            closeCreateRoom();
+            alert('방 정보가 수정됐어요.');
+        } catch (e) {
+            console.error(e);
+            alert('수정 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
+        } finally {
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '수정 완료'; }
+        }
+        return;
+    }
+
+    // ===== 새로 만들기 모드 =====
     const course = courses.find(c => c.id === currentDetailId);
     if (!course) return;
 
-    const submitBtn = document.querySelector('#createRoomOverlay .detail-btn');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '만드는 중...'; }
 
     try {
@@ -2051,6 +2200,7 @@ async function submitCreateRoom(){
             capacity,
             participants: [{ uid, nickname }],
             description,
+            meetingPoint,
             kakaoLink,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -2100,6 +2250,14 @@ function renderRoomDetail(room){
     document.getElementById('roomCapacityText').textContent = `${filled}/${room.capacity}명 모집`;
     document.getElementById('roomParticipantsList').innerHTML =
         room.participants.map(p => `<span class="room-participant-chip">${participantNickname(p)}</span>`).join('');
+
+    const meetingWrap = document.getElementById('roomMeetingPointWrap');
+    if (room.meetingPoint) {
+        meetingWrap.style.display = 'flex';
+        document.getElementById('roomMeetingPointText').textContent = room.meetingPoint;
+    } else {
+        meetingWrap.style.display = 'none';
+    }
 
     // 방장이면 삭제 버튼, 참여자(또는 방문자)면 신고/차단 버튼을 보여줘요
     document.getElementById('roomHostActions').style.display = isHost ? 'flex' : 'none';
@@ -2490,24 +2648,67 @@ function showSaved(){
 
 function showMy(){
     setActiveTab('my');
-
-    if (myNickname) {
-        const wantsChange = confirm(`마이페이지는 아직 준비 중이에요.\n\n현재 닉네임: ${myNickname}\n\n닉네임을 변경할까요?`);
-        if (wantsChange) {
-            const input = prompt('새 닉네임을 입력해주세요', myNickname);
-            if (input && input.trim()) {
-                myNickname = input.trim();
-                try {
-                    localStorage.setItem('runmate_nickname', myNickname);
-                } catch (e) {}
-                alert('닉네임이 변경됐어요! (이미 만든 방/참여 기록의 닉네임은 그대로 남아있어요)');
-            }
-        }
-    } else {
-        alert('마이페이지는 준비 중이에요! 아직 설정된 닉네임이 없어요 — 방을 만들거나 참여할 때 물어볼게요.');
-    }
-
+    openMyPage();
     setActiveTab(currentMode);
+}
+
+function myRoomCardTemplate(room){
+    const course = courses.find(c => c.id === room.locationId);
+    const filled = room.participants.length;
+    const isFull = filled >= room.capacity;
+    return `
+    <div class="room-card" onclick="openRoomDetail('${room.id}')">
+        <div class="room-card-top">
+            <span class="room-status ${isFull ? 'full' : ''}">${isFull ? '마감' : '모집중'}</span>
+            <span class="room-capacity">${filled}/${room.capacity}명</span>
+        </div>
+        <h4>${room.title}</h4>
+        <p class="room-meta">${course ? course.title : ''} · ${formatRoomDatetime(room.datetime)}</p>
+    </div>`;
+}
+
+function renderMyPage(){
+    document.getElementById('myPageNickname').textContent = myNickname ? `닉네임: ${myNickname}` : '닉네임이 아직 없어요';
+
+    const createdRooms = rooms.filter(r =>
+        r.hostUid ? r.hostUid === myUid : (myNickname && r.hostNickname === myNickname)
+    );
+    const joinedRooms = rooms.filter(r => {
+        const isHost = r.hostUid ? r.hostUid === myUid : (myNickname && r.hostNickname === myNickname);
+        if (isHost) return false;
+        return myUid && r.participants.some(p => participantUid(p) === myUid);
+    });
+
+    const createdEl = document.getElementById('myCreatedRooms');
+    createdEl.innerHTML = createdRooms.length
+        ? createdRooms.map(r => myRoomCardTemplate(r)).join('')
+        : '<p class="rooms-empty">아직 만든 방이 없어요</p>';
+
+    const joinedEl = document.getElementById('myJoinedRooms');
+    joinedEl.innerHTML = joinedRooms.length
+        ? joinedRooms.map(r => myRoomCardTemplate(r)).join('')
+        : '<p class="rooms-empty">아직 참여한 방이 없어요</p>';
+}
+
+function openMyPage(){
+    renderMyPage();
+    document.getElementById('myPageOverlay').classList.add('open');
+}
+
+function closeMyPage(){
+    document.getElementById('myPageOverlay').classList.remove('open');
+}
+
+function changeNicknameFromMyPage(){
+    const input = prompt('새 닉네임을 입력해주세요', myNickname || '');
+    if (input && input.trim()) {
+        myNickname = input.trim();
+        try {
+            localStorage.setItem('runmate_nickname', myNickname);
+        } catch (e) {}
+        renderMyPage();
+        alert('닉네임이 변경됐어요! (이미 만든 방/참여 기록의 닉네임은 그대로 남아있어요)');
+    }
 }
 
 function showNearby(){
