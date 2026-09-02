@@ -784,6 +784,38 @@ footer div.active{
     font-variant-numeric:tabular-nums;
 }
 
+.course-map-wrap{
+    width:100%;
+    height:200px;
+    border-radius:12px;
+    overflow:hidden;
+    border:1px solid #E8E6E1;
+    margin-bottom:10px;
+    background:#f0f0f0;
+}
+
+.course-map-wrap .leaflet-container{
+    font-family:'Pretendard','Noto Sans KR',Arial,Helvetica,sans-serif;
+}
+
+.course-map-note{
+    font-size:11.5px;
+    color:#9A9D97;
+    margin-bottom:18px;
+    display:flex;
+    align-items:center;
+    gap:5px;
+}
+
+.course-map-note .dot{
+    width:8px;
+    height:8px;
+    border-radius:50%;
+    background:#FF6B47;
+    opacity:.5;
+    flex-shrink:0;
+}
+
 .detail-desc{
     font-size:14.5px;
     line-height:1.7;
@@ -1363,6 +1395,10 @@ footer div.active{
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 
+<!-- Leaflet (코스 위치 지도용, API 키 필요 없음) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 </head>
 
 <body>
@@ -1520,6 +1556,9 @@ footer div.active{
                 </div>
             </div>
 
+            <div class="course-map-wrap" id="courseMapWrap"></div>
+            <p class="course-map-note"><span class="dot"></span>코랄 원 = 완주 인증 시 위치 확인이 인정되는 범위(약 3km)</p>
+
             <p class="detail-desc" id="detailDesc"></p>
 
             <div class="rating-widget">
@@ -1641,6 +1680,7 @@ footer div.active{
         </div>
     </div>
 
+    <!-- 바텀시트: 운동종류 → 지역선택 필터 -->
     <!-- 마이페이지 -->
     <div class="detail-overlay" id="myPageOverlay">
         <div class="detail-header">
@@ -2031,6 +2071,7 @@ async function voteCandidate(id, event){
                 ? firebase.firestore.FieldValue.arrayRemove(uid)
                 : firebase.firestore.FieldValue.arrayUnion(uid)
         });
+        // 화면은 실시간 리스너가 자동으로 갱신해줘요
     } catch (e) {
         console.error(e);
         alert('투표 처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
@@ -2241,6 +2282,45 @@ function toggleFavorite(id, event){
 
 // ===== 코스 상세페이지 =====
 let currentDetailId = null;
+let courseMapInstance = null;
+
+// 코스 위치 + 완주 인증 인정 범위(3km, handleCheckin 로직과 동일한 값)를 지도로 보여줘요.
+// API 키가 필요 없는 OpenStreetMap 기반이에요.
+function renderCourseMap(course){
+    const wrap = document.getElementById('courseMapWrap');
+    if (!wrap || typeof L === 'undefined' || !course.lat || !course.lng) return;
+
+    if (courseMapInstance) {
+        courseMapInstance.remove();
+        courseMapInstance = null;
+    }
+
+    courseMapInstance = L.map(wrap, {
+        zoomControl: true,
+        attributionControl: true
+    }).setView([course.lat, course.lng], 14);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(courseMapInstance);
+
+    L.marker([course.lat, course.lng]).addTo(courseMapInstance)
+        .bindPopup(`${course.emoji} ${course.title}`);
+
+    L.circle([course.lat, course.lng], {
+        radius: 3000,
+        color: '#FF6B47',
+        weight: 1.5,
+        fillColor: '#FF6B47',
+        fillOpacity: 0.08
+    }).addTo(courseMapInstance);
+
+    // 오버레이 슬라이드 애니메이션 중에 지도 크기가 잘못 계산되는 걸 방지
+    setTimeout(() => {
+        if (courseMapInstance) courseMapInstance.invalidateSize();
+    }, 300);
+}
 
 function openDetail(id){
     const course = courses.find(c => c.id === id);
@@ -2266,6 +2346,8 @@ function openDetail(id){
     document.getElementById('detailDifficulty').textContent = starString(course.difficulty);
     document.getElementById('detailDesc').textContent = course.description || '아직 코스 설명이 준비되지 않았어요.';
     document.getElementById('detailShareBtn').onclick = (event) => shareCourse(course.id, event);
+
+    renderCourseMap(course);
 
     updateDetailHeartBtn();
     updateDetailRatingUI();
