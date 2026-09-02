@@ -1570,6 +1570,8 @@ footer div.active{
 
             <label class="room-form-label">정원</label>
             <select id="roomCapacityInput" class="room-form-input">
+                <option value="2">2명</option>
+                <option value="3">3명</option>
                 <option value="4">4명</option>
                 <option value="6" selected>6명</option>
                 <option value="8">8명</option>
@@ -1594,7 +1596,7 @@ footer div.active{
     <div class="detail-overlay" id="roomDetailOverlay">
         <div class="detail-header">
             <button class="detail-back" onclick="closeRoomDetail()" aria-label="뒤로가기"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20v-2z"/></svg></button>
-            <div></div>
+            <button class="detail-share" onclick="shareRoom()" aria-label="방 공유하기"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18 16.1c-.8 0-1.5.3-2 .9l-7.1-4.1c.1-.3.1-.6.1-.9s0-.6-.1-.9L15.9 7c.6.5 1.3.9 2.1.9 1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3c0 .3 0 .6.1.9L7.1 9.9C6.5 9.3 5.8 9 5 9c-1.7 0-3 1.3-3 3s1.3 3 3 3c.8 0 1.5-.3 2.1-.9l7.1 4.2c-.1.3-.1.5-.1.8 0 1.7 1.3 3 3 3s3-1.3 3-3-1.3-3-3-3z"/></svg></button>
         </div>
         <div class="detail-body" style="padding-top:70px;">
             <span class="district-tag" id="roomDetailStatus"></span>
@@ -1639,7 +1641,6 @@ footer div.active{
         </div>
     </div>
 
-    <!-- 바텀시트: 운동종류 → 지역선택 필터 -->
     <!-- 마이페이지 -->
     <div class="detail-overlay" id="myPageOverlay">
         <div class="detail-header">
@@ -2030,7 +2031,6 @@ async function voteCandidate(id, event){
                 ? firebase.firestore.FieldValue.arrayRemove(uid)
                 : firebase.firestore.FieldValue.arrayUnion(uid)
         });
-        // 화면은 실시간 리스너가 자동으로 갱신해줘요
     } catch (e) {
         console.error(e);
         alert('투표 처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
@@ -2374,6 +2374,13 @@ function renderRoomsList(){
 
 let editingRoomId = null;
 
+// datetime-local input에 넣을 "지금" 값을 만들어줘요 (과거 시간 선택 방지용)
+function nowForDatetimeInput(){
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16);
+}
+
 function openCreateRoom(){
     editingRoomId = null;
     document.querySelector('#createRoomOverlay h2').textContent = '방 만들기';
@@ -2382,7 +2389,9 @@ function openCreateRoom(){
     const course = courses.find(c => c.id === currentDetailId);
     document.getElementById('createRoomCourseLabel').textContent = `📍 ${course ? course.title : ''}`;
     document.getElementById('roomTitleInput').value = '';
-    document.getElementById('roomDatetimeInput').value = '';
+    const datetimeInput = document.getElementById('roomDatetimeInput');
+    datetimeInput.min = nowForDatetimeInput();
+    datetimeInput.value = '';
     document.getElementById('roomCapacityInput').value = '6';
     document.getElementById('roomDescInput').value = '';
     document.getElementById('roomMeetingPointInput').value = '';
@@ -2407,7 +2416,9 @@ function openEditRoom(){
     const course = courses.find(c => c.id === room.locationId);
     document.getElementById('createRoomCourseLabel').textContent = `📍 ${course ? course.title : ''}`;
     document.getElementById('roomTitleInput').value = room.title || '';
-    document.getElementById('roomDatetimeInput').value = room.datetime || '';
+    const datetimeInput = document.getElementById('roomDatetimeInput');
+    datetimeInput.min = nowForDatetimeInput();
+    datetimeInput.value = room.datetime || '';
     document.getElementById('roomCapacityInput').value = String(room.capacity || 6);
     document.getElementById('roomDescInput').value = room.description || '';
     document.getElementById('roomMeetingPointInput').value = room.meetingPoint || '';
@@ -2446,6 +2457,11 @@ async function submitCreateRoom(){
 
     if (!title || !datetime) {
         alert('모임 제목과 날짜/시간은 꼭 입력해주세요.');
+        return;
+    }
+
+    if (new Date(datetime).getTime() < Date.now()) {
+        alert('이미 지난 시간이에요. 앞으로의 날짜/시간을 선택해주세요.');
         return;
     }
 
@@ -2908,6 +2924,32 @@ function shareCourse(id, event){
     }
 }
 
+// 방 공유하기 - 오픈카톡 링크는 참여 확정 전까지 노출 안 시키는 원칙 유지, 링크는 안 담음
+function shareRoom(){
+    const room = rooms.find(r => r.id === currentRoomId);
+    if (!room) return;
+    const course = courses.find(c => c.id === room.locationId);
+    const filled = room.participants.length;
+
+    const shareText = `🏃 ${room.title}\n📍 ${course ? course.title : ''}${room.meetingPoint ? ' · ' + room.meetingPoint : ''}\n🕐 ${formatRoomDatetime(room.datetime)}\n👥 ${filled}/${room.capacity}명 모집 중\n\nRunMate에서 같이 뛸 사람 구하고 있어요! 아래 링크로 들어와서 "참여하기" 눌러주세요.`;
+
+    if (navigator.share) {
+        navigator.share({
+            title: `RunMate - ${room.title}`,
+            text: shareText,
+            url: window.location.href
+        }).catch(() => {});
+    } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(shareText + '\n' + window.location.href).then(() => {
+            alert('방 정보가 클립보드에 복사됐어요. 친구에게 붙여넣어 보내보세요!');
+        }).catch(() => {
+            alert('이 브라우저에서는 공유하기가 지원되지 않아요.');
+        });
+    } else {
+        alert('이 브라우저에서는 공유하기가 지원되지 않아요.');
+    }
+}
+
 // ===== 오늘의 추천 코스 =====
 // 현재 시간대 + 데모 컨디션 값을 기준으로 코스 하나를 골라주는 간단한 규칙 기반 로직입니다.
 // 나중에 실제 날씨/대기질 API로 교체해도 이 함수의 구조는 그대로 재사용할 수 있어요.
@@ -3234,6 +3276,47 @@ if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js').catch((err) => {
             console.warn('서비스 워커 등록 실패:', err);
         });
+    });
+}
+
+// ===== 안드로이드 네이티브 앱 뒤로가기 버튼 처리 =====
+// 웹으로 볼 땐 동작 안 하고, Capacitor 앱(안드로이드)에서만 동작해요.
+// @capacitor/app 플러그인이 설치+동기화되어 있어야 해요:
+//   npm install @capacitor/app
+//   npx cap sync android
+if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+    window.Capacitor.Plugins.App.addListener('backButton', () => {
+        // 열려있는 화면이 있으면, 앱을 끄지 말고 그 화면부터 닫아줘요 (우선순위 순서)
+        const overlayCloseMap = [
+            ['suggestCourseOverlay', closeSuggestCourseForm],
+            ['courseCandidatesOverlay', closeCourseCandidates],
+            ['myPageOverlay', closeMyPage],
+            ['createRoomOverlay', closeCreateRoom],
+            ['roomDetailOverlay', closeRoomDetail],
+            ['detailOverlay', closeDetail],
+        ];
+
+        for (const [elId, closeFn] of overlayCloseMap) {
+            const el = document.getElementById(elId);
+            if (el && el.classList.contains('open')) {
+                closeFn();
+                return;
+            }
+        }
+
+        const sheet = document.getElementById('bottomSheet');
+        if (sheet && sheet.classList.contains('open')) {
+            closeSheet();
+            return;
+        }
+
+        if (currentMode !== 'home') {
+            showHome();
+            return;
+        }
+
+        // 열려있는 화면도 없고 이미 홈이면, 그때는 진짜로 앱을 종료해요
+        window.Capacitor.Plugins.App.exitApp();
     });
 }
 </script>
