@@ -405,6 +405,17 @@ main{
     transform:scale(1.15);
 }
 
+/* ===== 애니메이션 1: 찜하기(하트) 스케일 + 컬러 트랜지션 ===== */
+@keyframes heartPop{
+    0%{ transform:scale(1); }
+    50%{ transform:scale(1.3); }
+    100%{ transform:scale(1); }
+}
+
+.heart-btn.pop, .heart-btn-large.pop{
+    animation:heartPop .13s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 .share-btn{
     position:absolute;
     top:12px;
@@ -495,6 +506,81 @@ button.detail-btn.warm:active{
 button.detail-btn:disabled{
     opacity:.6;
     cursor:default;
+}
+
+/* ===== 애니메이션 2: 참여 버튼 로딩 → 체크 모핑 ===== */
+@keyframes btnSpin{
+    to{ transform:rotate(360deg); }
+}
+
+.btn-spinner{
+    display:inline-block;
+    width:18px;
+    height:18px;
+    border:2.5px solid rgba(255,255,255,.4);
+    border-top-color:#fff;
+    border-radius:50%;
+    animation:btnSpin .6s linear infinite;
+    vertical-align:-4px;
+}
+
+@keyframes btnIconPop{
+    0%{ transform:scale(0.4); opacity:0; }
+    100%{ transform:scale(1); opacity:1; }
+}
+
+.btn-result-icon{
+    display:inline-block;
+    animation:btnIconPop .15s ease-out;
+    vertical-align:-2px;
+    font-size:17px;
+}
+
+@keyframes btnShakeX{
+    0%,100%{ transform:translateX(0); }
+    20%{ transform:translateX(-6px); }
+    40%{ transform:translateX(6px); }
+    60%{ transform:translateX(-4px); }
+    80%{ transform:translateX(4px); }
+}
+
+button.detail-btn.shake{
+    animation:btnShakeX .35s ease;
+}
+
+button.detail-btn.success-fill{
+    background:#2EC4B6 !important;
+}
+
+/* ===== 애니메이션 3: 완주 인증 위치 확인 배지 ===== */
+@keyframes badgePop{
+    0%{ opacity:0; transform:scale(0.5); }
+    60%{ opacity:1; transform:scale(1.15); }
+    100%{ transform:scale(1); }
+}
+
+.checkin-row{
+    animation:badgePop .25s ease-out;
+}
+
+@keyframes locGlow{
+    0%{ box-shadow:0 0 0 0 rgba(31,168,155,.55); }
+    100%{ box-shadow:0 0 0 10px rgba(31,168,155,0); }
+}
+
+.room-participant-chip.loc-verified{
+    animation:locGlow .5s ease-out;
+}
+
+/* ===== 애니메이션 4: 별점 입력 stagger 채우기 ===== */
+@keyframes starPop{
+    0%{ transform:scale(1); }
+    50%{ transform:scale(1.35); }
+    100%{ transform:scale(1); }
+}
+
+.star-input button.just-filled{
+    animation:starPop .18s ease-out;
 }
 
 .room-checkin-section{
@@ -2270,14 +2356,30 @@ function selectRegion(regionId){
 }
 
 // ===== 찜 =====
+// 카드 전체를 다시 그리지 않고, 탭한 하트만 즉시 애니메이션 처리해요 (체감 속도용 낙관적 업데이트)
 function toggleFavorite(id, event){
     event.stopPropagation();
-    if (favorites.has(id)) {
+    const wasActive = favorites.has(id);
+    if (wasActive) {
         favorites.delete(id);
     } else {
         favorites.add(id);
     }
-    render();
+
+    const btn = event.currentTarget;
+    if (btn) {
+        btn.classList.toggle('active', !wasActive);
+        btn.classList.remove('pop');
+        void btn.offsetWidth; // 리플로우 강제 → 애니메이션 재시작
+        btn.classList.add('pop');
+    }
+
+    renderFavoritesWidget();
+
+    // "저장" 탭에서는 찜 해제 시 카드 자체가 목록에서 빠져야 하니 그때만 전체 다시 그림
+    if (currentMode === 'saved') {
+        render();
+    }
 }
 
 // ===== 코스 상세페이지 =====
@@ -2355,20 +2457,39 @@ function openDetail(id){
     document.getElementById('detailOverlay').classList.add('open');
 }
 
-function updateDetailRatingUI(){
+function updateDetailRatingUI(opts){
     const course = courses.find(c => c.id === currentDetailId);
     if (!course) return;
 
     document.getElementById('detailRating').textContent = `${avgRatingDisplay(course)} (${course.ratingCount}명)`;
 
     const myRating = userRatings.get(course.id) || 0;
-    document.querySelectorAll('#starInput button').forEach(btn => {
-        const val = Number(btn.dataset.star);
-        btn.classList.toggle('filled', val <= myRating);
-    });
+    // 애니메이션(animateStarFill)이 이미 별 채우기를 처리했을 땐 여기서 다시 덮어쓰지 않아요
+    if (!(opts && opts.skipStars)) {
+        document.querySelectorAll('#starInput button').forEach(btn => {
+            const val = Number(btn.dataset.star);
+            btn.classList.toggle('filled', val <= myRating);
+        });
+    }
     document.getElementById('ratingCountText').textContent = myRating > 0
         ? `내가 남긴 평점: ${myRating}점 (다시 탭하면 변경돼요)`
         : '별을 탭해서 평점을 남겨보세요';
+}
+
+// 1번 별부터 순서대로 40ms 간격을 두고 팝 애니메이션과 함께 채워요
+function animateStarFill(stars){
+    const buttons = document.querySelectorAll('#starInput button');
+    buttons.forEach((btn, idx) => {
+        const starValue = idx + 1;
+        if (starValue <= stars) {
+            setTimeout(() => {
+                btn.classList.add('filled', 'just-filled');
+                setTimeout(() => btn.classList.remove('just-filled'), 180);
+            }, idx * 40);
+        } else {
+            btn.classList.remove('filled', 'just-filled');
+        }
+    });
 }
 
 function submitRating(stars, event){
@@ -2386,7 +2507,8 @@ function submitRating(stars, event){
     }
     userRatings.set(course.id, stars);
 
-    updateDetailRatingUI();
+    animateStarFill(stars);
+    updateDetailRatingUI({ skipStars: true });
     render();
 }
 
@@ -2394,11 +2516,16 @@ function closeDetail(){
     document.getElementById('detailOverlay').classList.remove('open');
 }
 
-function updateDetailHeartBtn(){
+function updateDetailHeartBtn(opts){
     const btn = document.getElementById('detailHeartBtn');
     const isFav = favorites.has(currentDetailId);
     document.getElementById('detailHeartLabel').textContent = isFav ? '찜 완료' : '찜하기';
     btn.classList.toggle('active', isFav);
+    if (opts && opts.animate) {
+        btn.classList.remove('pop');
+        void btn.offsetWidth;
+        btn.classList.add('pop');
+    }
 }
 
 function toggleFavoriteFromDetail(){
@@ -2408,8 +2535,8 @@ function toggleFavoriteFromDetail(){
     } else {
         favorites.add(currentDetailId);
     }
-    updateDetailHeartBtn();
-    render();
+    updateDetailHeartBtn({ animate: true });
+    renderFavoritesWidget();
 }
 
 // ===== 공유하기 =====
@@ -2698,13 +2825,14 @@ function renderRoomDetail(room){
                 const confirmedText = confirmedCount > 0 ? ` · 동료확인 ${confirmedCount}` : '';
                 const isMe = myUid && p.uid === myUid;
                 const iConfirmed = myUid && (p.confirmedBy || []).includes(myUid);
+                const chipClass = p.locationVerified ? 'room-participant-chip loc-verified' : 'room-participant-chip';
 
                 const confirmBtnHtml = (!isMe && myUid)
                     ? `<button class="peer-confirm-btn ${iConfirmed ? 'confirmed' : ''}" onclick="confirmPeer('${p.uid}', event)" ${iConfirmed ? 'disabled' : ''}>${iConfirmed ? '👍 확인함' : '👍 확인'}</button>`
                     : '';
 
                 return `<div class="checkin-row">
-                    <span class="room-participant-chip">🏁 ${locationBadge}${participantNickname(p)}${confirmedText}</span>
+                    <span class="${chipClass}">🏁 ${locationBadge}${participantNickname(p)}${confirmedText}</span>
                     ${confirmBtnHtml}
                 </div>`;
             }).join('')
@@ -2750,17 +2878,34 @@ async function handleRoomJoin(){
     }
 
     const joinBtn = document.getElementById('roomJoinBtn');
-    if (joinBtn) { joinBtn.disabled = true; joinBtn.textContent = '참여하는 중...'; }
+    if (joinBtn) {
+        joinBtn.disabled = true;
+        joinBtn.classList.remove('success-fill', 'shake');
+        joinBtn.innerHTML = '<span class="btn-spinner"></span>';
+    }
 
     try {
         await db.collection('rooms').doc(room.id).update({
             participants: firebase.firestore.FieldValue.arrayUnion({ uid, nickname })
         });
-        // 화면은 실시간 리스너가 자동으로 갱신해줘요
+        // 성공 표시(체크마크 + 민트색)는 잠깐 보여주고, 곧이어 실시간 리스너가
+        // renderRoomDetail을 다시 호출해서 최종적으로 오픈카톡 버튼으로 교체돼요
+        if (joinBtn) {
+            joinBtn.innerHTML = '<span class="btn-result-icon">✓</span>';
+            joinBtn.classList.add('success-fill');
+        }
     } catch (e) {
         console.error(e);
         alert('참여하는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
-        if (joinBtn) { joinBtn.disabled = false; joinBtn.textContent = '참여하기'; }
+        if (joinBtn) {
+            joinBtn.disabled = false;
+            joinBtn.innerHTML = '<span class="btn-result-icon">✕</span> 다시 시도';
+            joinBtn.classList.add('shake');
+            setTimeout(() => joinBtn.classList.remove('shake'), 400);
+            setTimeout(() => {
+                if (joinBtn && !joinBtn.disabled) joinBtn.textContent = '참여하기';
+            }, 1500);
+        }
     }
 }
 
