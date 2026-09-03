@@ -1843,16 +1843,14 @@ footer div.active{
         <div class="sheet-section">
             <h4>운동 종류</h4>
             <ul class="sport-list">
-                <li class="sport-item active">
+                <li class="sport-item active" data-sport="running" onclick="selectSport('running'); closeSheet();">
                     <span class="sport-item-label"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" style="margin-right:7px;vertical-align:-3px;"><path d="M2 12c2-4 4 4 6 0s4 4 6 0 4 4 6 0"/></svg>러닝</span>
                 </li>
-                <li class="sport-item disabled" onclick="notReady()">
+                <li class="sport-item" data-sport="cycling" onclick="selectSport('cycling'); closeSheet();">
                     <span class="sport-item-label"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="margin-right:7px;vertical-align:-3px;"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 100-2 1 1 0 000 2zM12 17.5V14l-3-3 4-3 2 3h3"/></svg>자전거</span>
-                    <span class="badge">준비중</span>
                 </li>
-                <li class="sport-item disabled" onclick="notReady()">
+                <li class="sport-item" data-sport="hiking" onclick="selectSport('hiking'); closeSheet();">
                     <span class="sport-item-label"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="margin-right:7px;vertical-align:-3px;"><path d="M3 20l6-10 4 6 3-4 5 8H3z"/></svg>등산</span>
-                    <span class="badge">준비중</span>
                 </li>
             </ul>
         </div>
@@ -1907,6 +1905,7 @@ const courses = [
         lat: 35.1587,
         lng: 129.1604,
         tags: ['scenic', 'beach'],
+        sport: 'running',
         description: '부산의 대표 해변을 따라 달리는 코스예요. 넓은 백사장과 탁 트인 바다 전망이 특징이며, 아침 일찍 뛰면 인파 없이 여유롭게 즐길 수 있어요.'
     },
     {
@@ -1925,6 +1924,7 @@ const courses = [
         lat: 35.1531,
         lng: 129.1186,
         tags: ['night', 'view'],
+        sport: 'running',
         description: '광안대교 야경을 보며 달리는 코스예요. 해질 무렵부터 시작하면 조명이 켜지는 다리를 배경으로 인생샷도 남길 수 있어요.'
     },
     {
@@ -1943,6 +1943,7 @@ const courses = [
         lat: 35.1795,
         lng: 129.0603,
         tags: ['shade', 'beginner'],
+        sport: 'running',
         description: '울창한 나무 그늘이 이어지는 도심 속 힐링 코스예요. 초보 러너도 부담 없이 완주할 수 있는 완만한 경사가 특징이에요.'
     },
     {
@@ -1961,6 +1962,7 @@ const courses = [
         lat: 35.1256,
         lng: 129.1194,
         tags: ['scenic', 'coastal'],
+        sport: 'running',
         description: '기암절벽과 구름다리를 따라 걷는 해안 트레킹 코스예요. 오르막 구간이 있어 난이도는 있지만, 광안대교와 오륙도까지 한눈에 보이는 전망이 압권이에요.'
     },
     {
@@ -1979,6 +1981,7 @@ const courses = [
         lat: 35.0965,
         lng: 128.9645,
         tags: ['flat', 'beginner'],
+        sport: 'running',
         description: '낙동강 하구 습지를 따라 평탄하게 이어지는 코스예요. 철새 도래지로도 유명해서, 운 좋으면 러닝 중에 철새 무리를 만날 수도 있어요.'
     },
     {
@@ -1997,7 +2000,122 @@ const courses = [
         lat: 35.0517,
         lng: 129.0873,
         tags: ['scenic', 'forest'],
+        sport: 'running',
         description: '울창한 숲길과 깎아지른 해안 절벽을 함께 즐길 수 있는 순환 코스예요. 완만한 도로라 페이스 유지하며 달리기 좋고, 중간중간 전망대에서 쉬어가기도 좋아요.'
+    },
+    {
+        id: 'nakdong-bike',
+        emoji: '🚴',
+        title: '낙동강 자전거길',
+        district: '사하구',
+        city: '부산광역시',
+        img: 'https://images.unsplash.com/photo-1517649763962-0c623066013b?w=800&q=80',
+        alt: '낙동강을 따라 이어지는 자전거길 풍경',
+        ratingSum: 4.7,
+        ratingCount: 1,
+        length: 15.0,
+        duration: '1시간',
+        difficulty: 1,
+        lat: 35.0965,
+        lng: 128.9645,
+        tags: ['flat', 'scenic'],
+        sport: 'cycling',
+        description: '국토종주 자전거길의 일부로, 낙동강을 따라 길게 이어지는 평탄한 코스예요. 신호 없이 쭉 달릴 수 있어서 장거리 라이딩 입문으로 좋아요.'
+    },
+    {
+        id: 'songjeong-bike',
+        emoji: '🚴',
+        title: '해운대~송정 해안 자전거길',
+        district: '해운대구',
+        city: '부산광역시',
+        img: 'https://images.unsplash.com/photo-1571333250630-f0230c320b6d?w=800&q=80',
+        alt: '해운대에서 송정으로 이어지는 해안 자전거길',
+        ratingSum: 4.8,
+        ratingCount: 1,
+        length: 6.0,
+        duration: '30분',
+        difficulty: 2,
+        lat: 35.1663,
+        lng: 129.1927,
+        tags: ['scenic', 'coastal'],
+        sport: 'cycling',
+        description: '해운대에서 청사포를 지나 송정까지, 바다를 옆에 끼고 달리는 인기 코스예요. 중간중간 카페가 많아 쉬어가기도 좋아요.'
+    },
+    {
+        id: 'oncheoncheon-bike',
+        emoji: '🚴',
+        title: '온천천 자전거길',
+        district: '동래구',
+        city: '부산광역시',
+        img: 'https://images.unsplash.com/photo-1517654443271-3e293b03fed4?w=800&q=80',
+        alt: '온천천을 따라 이어지는 도심 하천 자전거길',
+        ratingSum: 4.5,
+        ratingCount: 1,
+        length: 8.0,
+        duration: '40분',
+        difficulty: 1,
+        lat: 35.1985,
+        lng: 129.0850,
+        tags: ['flat', 'beginner'],
+        sport: 'cycling',
+        description: '도심을 가로지르는 하천을 따라 평탄하게 이어지는 코스예요. 접근성이 좋아서 퇴근 후 가볍게 타기 좋아요.'
+    },
+    {
+        id: 'geumjeongsan-hike',
+        emoji: '⛰️',
+        title: '금정산 등산 코스',
+        district: '금정구',
+        city: '부산광역시',
+        img: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=800&q=80',
+        alt: '금정산 능선과 금정산성 풍경',
+        ratingSum: 4.9,
+        ratingCount: 1,
+        length: 5.0,
+        duration: '2시간 30분',
+        difficulty: 4,
+        lat: 35.2429,
+        lng: 129.0587,
+        tags: ['scenic', 'challenging'],
+        sport: 'hiking',
+        description: '부산에서 가장 높은 산으로, 금정산성을 따라 걷는 능선 코스예요. 난이도는 있지만 정상에서 보는 부산 시내 전망이 압권이에요.'
+    },
+    {
+        id: 'jangsan-hike',
+        emoji: '⛰️',
+        title: '장산 등산 코스',
+        district: '해운대구',
+        city: '부산광역시',
+        img: 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=800&q=80',
+        alt: '장산 숲길과 억새밭 풍경',
+        ratingSum: 4.7,
+        ratingCount: 1,
+        length: 4.5,
+        duration: '2시간',
+        difficulty: 3,
+        lat: 35.1799,
+        lng: 129.1927,
+        tags: ['scenic', 'forest'],
+        sport: 'hiking',
+        description: '해운대 바로 뒤에 있어 접근이 편한 산이에요. 억새밭과 계곡이 있어 계절마다 색다른 풍경을 즐길 수 있어요.'
+    },
+    {
+        id: 'hwangryeongsan-hike',
+        emoji: '⛰️',
+        title: '황령산 등산 코스',
+        district: '부산진구',
+        city: '부산광역시',
+        img: 'https://images.unsplash.com/photo-1486870591958-9b9d0d1dda99?w=800&q=80',
+        alt: '황령산 전망대에서 바라본 부산 야경',
+        ratingSum: 4.6,
+        ratingCount: 1,
+        length: 3.0,
+        duration: '1시간 30분',
+        difficulty: 2,
+        lat: 35.1467,
+        lng: 129.0879,
+        tags: ['view', 'beginner'],
+        sport: 'hiking',
+        description: '부산 도심 한가운데 있는 산으로, 초보자도 부담 없이 오를 수 있어요. 정상 전망대에서 보는 부산 야경이 특히 유명해요.'
     }
 ];
 
@@ -2010,6 +2128,8 @@ let userRatings = new Map();   // 이 세션에서 내가 남긴 평점 (courseI
 let currentMode = 'home';      // home | nearby | saved
 // 첫 화면 기본값(전체 보기)은 임시 설정입니다. 팀에서 논의 후 바뀔 수 있어요.
 let currentRegion = 'all';
+let currentSport = 'running';  // running | cycling | hiking
+const sportNames = { running: '러닝', cycling: '자전거', hiking: '등산' };
 let userLocation = null;
 let myNickname = null;
 let currentRoomId = null;
@@ -2306,14 +2426,20 @@ function haversineKm(lat1, lon1, lat2, lon2){
     return R * c;
 }
 
+function coursesBySport(){
+    return courses.filter(c => c.sport === currentSport);
+}
+
 function courseCountInRegion(regionId){
-    if (regionId === 'all') return courses.length;
-    return courses.filter(c => c.district === regionId).length;
+    const bySport = coursesBySport();
+    if (regionId === 'all') return bySport.length;
+    return bySport.filter(c => c.district === regionId).length;
 }
 
 function getFilteredByRegion(){
-    if (currentRegion === 'all') return courses;
-    return courses.filter(c => c.district === currentRegion);
+    const bySport = coursesBySport();
+    if (currentRegion === 'all') return bySport;
+    return bySport.filter(c => c.district === currentRegion);
 }
 
 // ===== 바텀시트 =====
@@ -2344,7 +2470,24 @@ function renderRegionList(){
 }
 
 function updateFilterLabel(){
-    document.getElementById('filterLabel').textContent = `러닝 · ${regionLabel()}`;
+    document.getElementById('filterLabel').textContent = `${sportNames[currentSport]} · ${regionLabel()}`;
+}
+
+function selectSport(sport){
+    currentSport = sport;
+    // 종목이 바뀌면 지역별 코스 개수도 달라지니 지역 목록도 다시 그려줘요
+    renderSportList();
+    renderRegionList();
+    updateFilterLabel();
+    renderTodayPick();
+    render();
+}
+
+function renderSportList(){
+    const items = document.querySelectorAll('.sport-item[data-sport]');
+    items.forEach(item => {
+        item.classList.toggle('active', item.dataset.sport === currentSport);
+    });
 }
 
 function selectRegion(regionId){
@@ -3181,20 +3324,21 @@ function shareRoom(){
 // 현재 시간대 + 데모 컨디션 값을 기준으로 코스 하나를 골라주는 간단한 규칙 기반 로직입니다.
 // 나중에 실제 날씨/대기질 API로 교체해도 이 함수의 구조는 그대로 재사용할 수 있어요.
 function pickTodayRecommendation(){
+    const pool = coursesBySport();
     const hour = new Date().getHours();
     let pick = null;
     let reason = '';
 
     if (hour >= 18 || hour < 6) {
-        pick = courses.find(c => c.tags && c.tags.includes('night'));
+        pick = pool.find(c => c.tags && c.tags.includes('night'));
         reason = '🌙 저녁엔 야경이 예쁜 코스가 좋아요';
     } else if (mockCondition.tempC >= 27) {
-        pick = courses.find(c => c.tags && c.tags.includes('shade'));
+        pick = pool.find(c => c.tags && c.tags.includes('shade'));
         reason = '🌳 더운 날엔 그늘이 많은 코스를 추천해요';
     }
 
     if (!pick) {
-        pick = [...courses].sort((a, b) => avgRating(b) - avgRating(a))[0];
+        pick = [...pool].sort((a, b) => avgRating(b) - avgRating(a))[0];
         reason = '⭐ 지금 가장 평점 높은 코스예요';
     }
 
@@ -3340,7 +3484,7 @@ function render(){
     const regionFiltered = getFilteredByRegion();
 
     if (currentMode === 'home') {
-        titleEl.textContent = `${regionLabel()} 추천 러닝 코스`;
+        titleEl.textContent = `${regionLabel()} 추천 ${sportNames[currentSport]} 코스`;
         hideBanner();
         if (regionFiltered.length === 0) {
             container.innerHTML = '';
