@@ -2613,7 +2613,7 @@ function parseGpxTrackPoints(gpxText){
     for (let i = 0; i < trkpts.length; i++) {
         const lat = parseFloat(trkpts[i].getAttribute('lat'));
         const lon = parseFloat(trkpts[i].getAttribute('lon'));
-        if (!isNaN(lat) && !isNaN(lon)) points.push([lat, lon]);
+        if (!isNaN(lat) && !isNaN(lon)) points.push({ lat, lng: lon });
     }
     return points;
 }
