@@ -902,6 +902,22 @@ footer div.active{
     flex-shrink:0;
 }
 
+.gpx-submit-btn{
+    width:100%;
+    margin-bottom:18px;
+    background:none;
+    border:1px dashed #9FE6DC;
+    color:#1FA89B;
+    font-size:12.5px;
+    padding:10px;
+    border-radius:10px;
+    cursor:pointer;
+}
+
+.gpx-submit-btn:active{
+    background:#E3F9F6;
+}
+
 .detail-desc{
     font-size:14.5px;
     line-height:1.7;
@@ -1644,6 +1660,9 @@ footer div.active{
 
             <div class="course-map-wrap" id="courseMapWrap"></div>
             <p class="course-map-note"><span class="dot"></span>코랄 원 = 완주 인증 시 위치 확인이 인정되는 범위(약 3km)</p>
+
+            <button class="gpx-submit-btn" onclick="triggerGpxUpload()">🧭 실제 경로 GPX 제보하기 (스트라바·등산앱 등에서 내보낸 파일)</button>
+            <input type="file" id="gpxFileInput" accept=".gpx" style="display:none;" onchange="handleGpxFileSelected(event)">
 
             <p class="detail-desc" id="detailDesc"></p>
 
@@ -2561,10 +2580,100 @@ function renderCourseMap(course){
         fillOpacity: 0.08
     }).addTo(courseMapInstance);
 
+    // 실제 경로(route) 데이터가 있는 코스는 빨간 선으로 그려요.
+    // 아직은 유저가 GPX 제보하면 사람이 검토해서 course 데이터에 수동으로 반영하는 방식이에요.
+    if (Array.isArray(course.route) && course.route.length > 1) {
+        const routeLine = L.polyline(course.route, {
+            color: '#e74c3c',
+            weight: 4,
+            opacity: 0.85
+        }).addTo(courseMapInstance);
+        courseMapInstance.fitBounds(routeLine.getBounds(), { padding: [24, 24] });
+    }
+
     // 오버레이 슬라이드 애니메이션 중에 지도 크기가 잘못 계산되는 걸 방지
     setTimeout(() => {
         if (courseMapInstance) courseMapInstance.invalidateSize();
     }, 300);
+}
+
+// ===== 실제 경로 GPX 제보 =====
+// 앱 안에서 실시간으로 위치를 계속 추적하지 않고, 이미 다른 앱(스트라바·등산앱 등)으로
+// 기록한 GPX 파일을 업로드받아요. 배터리 소모나 새 권한이 필요 없는 가벼운 방식이에요.
+function triggerGpxUpload(){
+    document.getElementById('gpxFileInput').click();
+}
+
+// GPX(XML) 파일에서 <trkpt lat lon> 좌표들만 뽑아내요
+function parseGpxTrackPoints(gpxText){
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(gpxText, 'application/xml');
+    const trkpts = xml.getElementsByTagName('trkpt');
+    const points = [];
+    for (let i = 0; i < trkpts.length; i++) {
+        const lat = parseFloat(trkpts[i].getAttribute('lat'));
+        const lon = parseFloat(trkpts[i].getAttribute('lon'));
+        if (!isNaN(lat) && !isNaN(lon)) points.push([lat, lon]);
+    }
+    return points;
+}
+
+// 점이 너무 많으면(수천 개) 일정 간격으로 솎아내서 가볍게 만들어요
+function sampleRoutePoints(points, maxCount){
+    if (points.length <= maxCount) return points;
+    const step = points.length / maxCount;
+    const sampled = [];
+    for (let i = 0; i < maxCount; i++) {
+        sampled.push(points[Math.floor(i * step)]);
+    }
+    return sampled;
+}
+
+async function handleGpxFileSelected(event){
+    const file = event.target.files[0];
+    event.target.value = ''; // 같은 파일 다시 선택할 수 있게 리셋
+    if (!file) return;
+
+    if (!firebaseReady) {
+        alert('아직 서버 연결이 안 됐어요.');
+        return;
+    }
+
+    const nickname = ensureNickname();
+    if (!nickname) return;
+
+    let uid;
+    try {
+        uid = await ensureAuth();
+    } catch (e) {
+        alert('로그인 처리 중 문제가 생겼어요. 잠시 후 다시 시도해주세요.');
+        return;
+    }
+
+    const course = courses.find(c => c.id === currentDetailId);
+    if (!course) return;
+
+    try {
+        const text = await file.text();
+        const points = parseGpxTrackPoints(text);
+        if (points.length < 2) {
+            alert('GPX 파일에서 경로 좌표를 찾지 못했어요. 파일 형식을 확인해주세요.');
+            return;
+        }
+        const sampled = sampleRoutePoints(points, 200);
+
+        await db.collection('courseRoutes').add({
+            courseId: course.id,
+            submittedBy: { uid, nickname },
+            points: sampled,
+            pointCount: sampled.length,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        alert('경로를 제보해주셔서 감사해요! 검토 후 실제 코스 지도에 반영할게요 🙏');
+    } catch (e) {
+        console.error(e);
+        alert('GPX 파일을 처리하는 중 문제가 생겼어요. 파일 형식을 확인해주세요.');
+    }
 }
 
 function openDetail(id){
