@@ -256,6 +256,49 @@ main{
     align-items:center;
 }
 
+/* 정렬 칩 (홈/찜 탭에서만 노출, 내 주변 탭은 항상 거리순이라 숨김) */
+.sort-row{
+    display:flex;
+    gap:7px;
+    margin:-8px 0 16px;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+}
+
+.sort-row::-webkit-scrollbar{
+    display:none;
+}
+
+.sort-row.hidden{
+    display:none;
+}
+
+.sort-chip{
+    flex:0 0 auto;
+    background:white;
+    border:1px solid #E8E6E1;
+    border-radius:999px;
+    padding:7px 13px;
+    font-size:12.5px;
+    font-family:inherit;
+    color:#6E7570;
+    font-weight:500;
+    cursor:pointer;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+}
+
+.sort-chip:active{
+    transform:scale(0.97);
+}
+
+.sort-chip.active{
+    background:#E3F9F6;
+    border-color:#9FE6DC;
+    color:#1FA89B;
+    font-weight:700;
+}
+
 .title{
     margin-bottom:14px;
     display:flex;
@@ -1077,6 +1120,52 @@ footer div.active{
     background:#fde8e8;
 }
 
+/* 약속 시간이 지난 방 — 모집이 아니라 "종료된 모임"임을 색으로 구분 */
+.room-status.past{
+    color:#6E7570;
+    background:#EDEBE6;
+}
+
+.room-card.past-room{
+    opacity:.72;
+}
+
+/* 지난 모임 구분선 */
+.rooms-divider{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    margin:16px 0 10px;
+    font-size:11.5px;
+    color:#9A9D97;
+    font-weight:600;
+}
+
+.rooms-divider::before,
+.rooms-divider::after{
+    content:'';
+    flex:1;
+    height:1px;
+    background:#E8E6E1;
+}
+
+.past-toggle-btn{
+    width:100%;
+    background:none;
+    border:1px dashed #E8E6E1;
+    border-radius:10px;
+    padding:10px;
+    margin-top:10px;
+    font-size:12.5px;
+    font-family:inherit;
+    color:#6E7570;
+    cursor:pointer;
+}
+
+.past-toggle-btn:active{
+    background:#FAFAF8;
+}
+
 .room-capacity{
     font-size:12px;
     color:#888;
@@ -1562,6 +1651,15 @@ footer div.active{
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
             </span>
         </button>
+
+        <!-- 정렬 옵션 (내 주변 탭에서는 항상 거리순이라 자동으로 숨겨짐) -->
+        <div class="sort-row" id="sortRow">
+            <button class="sort-chip active" data-sort="default" onclick="selectSort('default')">기본순</button>
+            <button class="sort-chip" data-sort="rating" onclick="selectSort('rating')">평점 높은순</button>
+            <button class="sort-chip" data-sort="lengthAsc" onclick="selectSort('lengthAsc')">짧은 코스순</button>
+            <button class="sort-chip" data-sort="lengthDesc" onclick="selectSort('lengthDesc')">긴 코스순</button>
+            <button class="sort-chip" data-sort="easy" onclick="selectSort('easy')">쉬운 코스순</button>
+        </div>
 
         <div class="title">
             <svg class="title-eyebrow" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 12c2-4 4 4 6 0s4 4 6 0 4 4 6 0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
@@ -2148,6 +2246,8 @@ let currentMode = 'home';      // home | nearby | saved
 // 첫 화면 기본값(전체 보기)은 임시 설정입니다. 팀에서 논의 후 바뀔 수 있어요.
 let currentRegion = 'all';
 let currentSport = 'running';  // running | cycling | hiking
+// 홈/찜 탭 정렬 기준. '내 주변' 탭은 항상 거리순이라 이 값을 쓰지 않아요.
+let currentSort = 'default';   // default | rating | lengthAsc | lengthDesc | easy
 const sportNames = { running: '러닝', cycling: '자전거', hiking: '등산' };
 let userLocation = null;
 let myNickname = null;
@@ -2461,6 +2561,50 @@ function getFilteredByRegion(){
     return bySport.filter(c => c.district === currentRegion);
 }
 
+// ⚠️ 반드시 "복사본"을 정렬해서 돌려줘요.
+// 예전에 showNearby()가 전역 courses 배열을 직접 sort해서, 내 주변 탭을 한 번만 눌러도
+// 홈/찜 탭 순서까지 영구히 바뀌어버리는 버그가 있었어요.
+function sortCourses(list, mode){
+    const sorted = [...list];
+
+    if (mode === 'distance') {
+        // 위치를 아직 못 받았으면 원래 순서 유지
+        return sorted.sort((a, b) => {
+            const da = a._distance == null ? Infinity : a._distance;
+            const dbv = b._distance == null ? Infinity : b._distance;
+            return da - dbv;
+        });
+    }
+    if (mode === 'rating')     return sorted.sort((a, b) => avgRating(b) - avgRating(a));
+    if (mode === 'lengthAsc')  return sorted.sort((a, b) => a.length - b.length);
+    if (mode === 'lengthDesc') return sorted.sort((a, b) => b.length - a.length);
+    if (mode === 'easy')       return sorted.sort((a, b) => a.difficulty - b.difficulty);
+
+    return sorted;  // 'default' — 코드에 정의된 원래 순서
+}
+
+const sortNames = {
+    default: '기본순',
+    rating: '평점 높은순',
+    lengthAsc: '짧은 코스순',
+    lengthDesc: '긴 코스순',
+    easy: '쉬운 코스순'
+};
+
+function renderSortChips(){
+    document.querySelectorAll('.sort-chip[data-sort]').forEach(chip => {
+        chip.classList.toggle('active', chip.dataset.sort === currentSort);
+    });
+    // 내 주변 탭은 거리순이 고정이라 정렬 선택지를 숨겨요 (선택지가 두 개면 헷갈림)
+    document.getElementById('sortRow').classList.toggle('hidden', currentMode === 'nearby');
+}
+
+function selectSort(mode){
+    currentSort = mode;
+    renderSortChips();
+    render();
+}
+
 // ===== 바텀시트 =====
 function openSheet(){
     document.getElementById('bottomSheet').classList.add('open');
@@ -2680,6 +2824,7 @@ function openDetail(id){
     const course = courses.find(c => c.id === id);
     if (!course) return;
     currentDetailId = id;
+    showPastRoomsInCourse = false;  // 코스를 새로 열 때마다 지난 모임은 다시 접힌 상태로
 
     const img = document.getElementById('detailImg');
     const fallback = document.getElementById('detailImgFallback');
@@ -2803,6 +2948,24 @@ function formatRoomDatetime(dtStr){
     return `${d.getMonth() + 1}월 ${d.getDate()}일(${days[d.getDay()]}) ${hh}:${mm}`;
 }
 
+// 약속 시간이 이미 지난 방인지 판단해요. 완주 인증이 이 시점부터 열리기 때문에
+// "지난 방"이라고 해서 숨겨버리면 안 되고, 구분만 해줘야 해요.
+function isPastRoom(room){
+    if (!room.datetime) return false;
+    const d = new Date(room.datetime);
+    if (isNaN(d)) return false;
+    return d.getTime() < Date.now();
+}
+
+// 다가오는 방은 가까운 순(오름차순), 지난 방은 최근에 끝난 순(내림차순)으로 나눠서 돌려줘요.
+function splitRoomsByTime(list){
+    const upcoming = list.filter(r => !isPastRoom(r))
+        .sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+    const past = list.filter(r => isPastRoom(r))
+        .sort((a, b) => new Date(b.datetime) - new Date(a.datetime));
+    return { upcoming, past };
+}
+
 function roomsForCourse(courseId){
     return rooms.filter(r => r.locationId === courseId && !(r.hostUid && blockedUids.has(r.hostUid)));
 }
@@ -2810,10 +2973,22 @@ function roomsForCourse(courseId){
 function roomCardTemplate(room){
     const filled = room.participants.length;
     const isFull = filled >= room.capacity;
+    const past = isPastRoom(room);
+
+    let statusClass = '';
+    let statusText = '모집중';
+    if (past) {
+        statusClass = 'past';
+        statusText = '종료';
+    } else if (isFull) {
+        statusClass = 'full';
+        statusText = '마감';
+    }
+
     return `
-    <div class="room-card" onclick="openRoomDetail('${room.id}')">
+    <div class="room-card ${past ? 'past-room' : ''}" onclick="openRoomDetail('${room.id}')">
         <div class="room-card-top">
-            <span class="room-status ${isFull ? 'full' : ''}">${isFull ? '마감' : '모집중'}</span>
+            <span class="room-status ${statusClass}">${statusText}</span>
             <span class="room-capacity">${filled}/${room.capacity}명</span>
         </div>
         <h4>${room.title}</h4>
@@ -2821,16 +2996,39 @@ function roomCardTemplate(room){
     </div>`;
 }
 
+// 코스 상세의 지난 모임은 기본적으로 접어두고, 눌러야 펼쳐지게 해요 (모집 중인 방에 집중하도록)
+let showPastRoomsInCourse = false;
+
+function togglePastRooms(){
+    showPastRoomsInCourse = !showPastRoomsInCourse;
+    renderRoomsList();
+}
+
 function renderRoomsList(){
     const course = courses.find(c => c.id === currentDetailId);
     if (!course) return;
-    const list = roomsForCourse(course.id);
+    const { upcoming, past } = splitRoomsByTime(roomsForCourse(course.id));
     const container = document.getElementById('roomsList');
-    if (list.length === 0) {
-        container.innerHTML = '<p class="rooms-empty">아직 모집 중인 방이 없어요.<br>첫 방을 만들어보세요!</p>';
+
+    let html = '';
+
+    if (upcoming.length === 0) {
+        html += '<p class="rooms-empty">아직 모집 중인 방이 없어요.<br>첫 방을 만들어보세요!</p>';
     } else {
-        container.innerHTML = list.map(r => roomCardTemplate(r)).join('');
+        html += upcoming.map(r => roomCardTemplate(r)).join('');
     }
+
+    if (past.length > 0) {
+        if (showPastRoomsInCourse) {
+            html += `<div class="rooms-divider">지난 모임 ${past.length}개</div>`;
+            html += past.map(r => roomCardTemplate(r)).join('');
+            html += `<button class="past-toggle-btn" onclick="togglePastRooms()">지난 모임 접기</button>`;
+        } else {
+            html += `<button class="past-toggle-btn" onclick="togglePastRooms()">지난 모임 ${past.length}개 보기</button>`;
+        }
+    }
+
+    container.innerHTML = html;
 }
 
 let editingRoomId = null;
@@ -3019,7 +3217,8 @@ function renderRoomDetail(room){
     const joined = myUid && room.participants.some(p => participantUid(p) === myUid);
     const isHost = room.hostUid ? (room.hostUid === myUid) : (room.hostNickname === myNickname);
 
-    document.getElementById('roomDetailStatus').textContent = isFull ? '마감' : '모집중';
+    document.getElementById('roomDetailStatus').textContent =
+        isPastRoom(room) ? '종료' : (isFull ? '마감' : '모집중');
     document.getElementById('roomDetailTitle').textContent = room.title;
     document.getElementById('roomDetailMeta').textContent =
         `${formatRoomDatetime(room.datetime)} · ${course ? course.title : ''} · 방장 ${room.hostNickname}`;
@@ -3591,15 +3790,17 @@ function render(){
     hideEmpty();
 
     const regionFiltered = getFilteredByRegion();
+    renderSortChips();
 
     if (currentMode === 'home') {
-        titleEl.textContent = `${regionLabel()} 추천 ${sportNames[currentSport]} 코스`;
+        const sortSuffix = currentSort === 'default' ? '' : ` · ${sortNames[currentSort]}`;
+        titleEl.textContent = `${regionLabel()} 추천 ${sportNames[currentSport]} 코스${sortSuffix}`;
         hideBanner();
         if (regionFiltered.length === 0) {
             container.innerHTML = '';
             showEmpty(`${regionLabel()}에는 아직 등록된 코스가 없어요.\n다른 지역을 선택해보세요!`);
         } else {
-            container.innerHTML = regionFiltered.map(c => cardTemplate(c)).join('');
+            container.innerHTML = sortCourses(regionFiltered, currentSort).map(c => cardTemplate(c)).join('');
         }
 
     } else if (currentMode === 'nearby') {
@@ -3608,18 +3809,20 @@ function render(){
             container.innerHTML = '';
             showEmpty(`${regionLabel()}에는 아직 등록된 코스가 없어요.\n다른 지역을 선택해보세요!`);
         } else {
-            container.innerHTML = regionFiltered.map(c => cardTemplate(c, { showDistance: userLocation != null })).join('');
+            container.innerHTML = sortCourses(regionFiltered, 'distance')
+                .map(c => cardTemplate(c, { showDistance: userLocation != null })).join('');
         }
 
     } else if (currentMode === 'saved') {
-        titleEl.textContent = `${regionLabel()} 찜한 코스`;
+        const sortSuffix = currentSort === 'default' ? '' : ` · ${sortNames[currentSort]}`;
+        titleEl.textContent = `${regionLabel()} 찜한 코스${sortSuffix}`;
         hideBanner();
         const savedCourses = regionFiltered.filter(c => favorites.has(c.id));
         if (savedCourses.length === 0) {
             container.innerHTML = '';
             showEmpty('아직 찜한 코스가 없어요.\n하트 버튼을 눌러 마음에 드는 코스를 저장해보세요!');
         } else {
-            container.innerHTML = savedCourses.map(c => cardTemplate(c)).join('');
+            container.innerHTML = sortCourses(savedCourses, currentSort).map(c => cardTemplate(c)).join('');
         }
     }
 
@@ -3648,15 +3851,42 @@ function myRoomCardTemplate(room){
     const course = courses.find(c => c.id === room.locationId);
     const filled = room.participants.length;
     const isFull = filled >= room.capacity;
+    const past = isPastRoom(room);
+
+    let statusClass = '';
+    let statusText = '모집중';
+    if (past) {
+        statusClass = 'past';
+        statusText = '종료';
+    } else if (isFull) {
+        statusClass = 'full';
+        statusText = '마감';
+    }
+
     return `
-    <div class="room-card" onclick="openRoomDetail('${room.id}')">
+    <div class="room-card ${past ? 'past-room' : ''}" onclick="openRoomDetail('${room.id}')">
         <div class="room-card-top">
-            <span class="room-status ${isFull ? 'full' : ''}">${isFull ? '마감' : '모집중'}</span>
+            <span class="room-status ${statusClass}">${statusText}</span>
             <span class="room-capacity">${filled}/${room.capacity}명</span>
         </div>
         <h4>${room.title}</h4>
         <p class="room-meta">${course ? course.title : ''} · ${formatRoomDatetime(room.datetime)}</p>
     </div>`;
+}
+
+// 마이페이지에서는 지난 방을 절대 숨기면 안 돼요 — 완주 인증을 하러 들어오는 곳이라서요.
+// 다가오는 방을 위에, 지난 방은 구분선 아래에 그대로 보여줍니다.
+function renderMyRoomList(list, emptyMessage){
+    if (list.length === 0) return `<p class="rooms-empty">${emptyMessage}</p>`;
+
+    const { upcoming, past } = splitRoomsByTime(list);
+    let html = upcoming.map(r => myRoomCardTemplate(r)).join('');
+
+    if (past.length > 0) {
+        html += `<div class="rooms-divider">지난 모임 ${past.length}개 · 완주 인증 가능</div>`;
+        html += past.map(r => myRoomCardTemplate(r)).join('');
+    }
+    return html;
 }
 
 function renderMyPage(){
@@ -3671,15 +3901,11 @@ function renderMyPage(){
         return myUid && r.participants.some(p => participantUid(p) === myUid);
     });
 
-    const createdEl = document.getElementById('myCreatedRooms');
-    createdEl.innerHTML = createdRooms.length
-        ? createdRooms.map(r => myRoomCardTemplate(r)).join('')
-        : '<p class="rooms-empty">아직 만든 방이 없어요</p>';
+    document.getElementById('myCreatedRooms').innerHTML =
+        renderMyRoomList(createdRooms, '아직 만든 방이 없어요');
 
-    const joinedEl = document.getElementById('myJoinedRooms');
-    joinedEl.innerHTML = joinedRooms.length
-        ? joinedRooms.map(r => myRoomCardTemplate(r)).join('')
-        : '<p class="rooms-empty">아직 참여한 방이 없어요</p>';
+    document.getElementById('myJoinedRooms').innerHTML =
+        renderMyRoomList(joinedRooms, '아직 참여한 방이 없어요');
 }
 
 function openMyPage(){
@@ -3706,6 +3932,7 @@ function changeNicknameFromMyPage(){
 function showNearby(){
     currentMode = 'nearby';
     setActiveTab('nearby');
+    renderSortChips();  // 스켈레톤이 뜨는 동안에도 정렬 칩이 바로 숨겨지도록
     document.getElementById('sectionTitle').textContent = `${regionLabel()} 내 주변 추천 코스`;
 
     if (!navigator.geolocation) {
@@ -3721,10 +3948,11 @@ function showNearby(){
     navigator.geolocation.getCurrentPosition(
         function(pos){
             userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            // 거리 값만 각 코스에 붙여두고, 실제 정렬은 render()에서 "복사본"에만 적용해요.
+            // (전역 courses 배열을 직접 sort하면 홈/찜 탭 순서까지 영구히 바뀌어버려요)
             courses.forEach(c => {
                 c._distance = haversineKm(userLocation.lat, userLocation.lng, c.lat, c.lng);
             });
-            courses.sort((a, b) => a._distance - b._distance);
             showBanner('📍 현재 위치 기준으로 가까운 순 정렬했어요.');
             render();
         },
