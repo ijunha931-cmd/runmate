@@ -1876,6 +1876,9 @@ footer div.active{
                 <button onclick="reportRoom()">🚩 이 방 신고하기</button>
                 <button onclick="blockHost()">🚫 방장 차단하기</button>
             </div>
+            <div class="room-safety-row" id="roomLeaveActions" style="display:none;">
+                <button onclick="leaveRoom()" style="color:#c62828;">🚪 이 방에서 나가기</button>
+            </div>
             <div class="room-safety-row" id="roomHostActions" style="display:none;">
                 <button onclick="openEditRoom()">✏️ 방 수정하기</button>
                 <button onclick="deleteRoom()" style="color:#c62828;">🗑 삭제하기</button>
@@ -2293,12 +2296,12 @@ function candidateCardTemplate(c){
     return `
     <div class="candidate-card">
         <div class="room-card-top">
-            <span class="room-status">${c.district || ''}</span>
+            <span class="room-status">${esc(c.district || '')}</span>
             <span class="room-capacity">🗳 ${voteCount}표</span>
         </div>
-        <h4>${c.name}</h4>
-        <p class="room-meta">${c.description || ''}</p>
-        <p class="room-meta" style="margin-top:4px;">제안: ${suggesterName}</p>
+        <h4>${esc(c.name)}</h4>
+        <p class="room-meta">${esc(c.description || '')}</p>
+        <p class="room-meta" style="margin-top:4px;">제안: ${esc(suggesterName)}</p>
         <button class="candidate-vote-btn ${iVoted ? 'voted' : ''}" onclick="voteCandidate('${c.id}', event)">
             ${iVoted ? '✅ 투표함 (다시 탭하면 취소)' : '🗳 투표하기'}
         </button>
@@ -2403,12 +2406,72 @@ async function voteCandidate(id, event){
     }
 }
 
+// ===== 보안: HTML 이스케이프 =====
+// 닉네임·방 제목·설명처럼 사용자가 직접 입력한 값은 innerHTML로 넣기 전에 반드시 이걸 거쳐야 해요.
+// 안 그러면 닉네임을 <img src=x onerror=...> 로 지어서 다른 사람 브라우저에서
+// 스크립트를 실행시킬 수 있어요 (XSS).
+function esc(value){
+    if (value == null) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// ===== 코스 평점 (Firestore 'courseRatings') =====
+// 문서 id는 `${uid}_${courseId}` — 한 사람이 한 코스에 한 표만 갖고, 다시 누르면 수정돼요.
+let ratingAggregates = {};   // { courseId: { sum, count } }
+
+function initCourseRatingsListener(){
+    if (!firebaseReady) return;
+    db.collection('courseRatings').onSnapshot((snapshot) => {
+        const agg = {};
+        userRatings = new Map();
+        snapshot.docs.forEach(doc => {
+            const d = doc.data();
+            if (!d || !d.courseId || typeof d.stars !== 'number') return;
+            if (!agg[d.courseId]) agg[d.courseId] = { sum: 0, count: 0 };
+            agg[d.courseId].sum += d.stars;
+            agg[d.courseId].count += 1;
+            if (myUid && d.uid === myUid) userRatings.set(d.courseId, d.stars);
+        });
+        ratingAggregates = agg;
+        render();
+        if (currentDetailId && document.getElementById('detailOverlay').classList.contains('open')) {
+            updateDetailRatingUI();
+        }
+    }, (err) => {
+        console.error('평점 데이터를 불러오는 중 오류가 발생했어요:', err);
+    });
+}
+
 function loadBlockedUids(){
     try {
         const saved = localStorage.getItem('runmate_blocked_uids');
         if (saved) blockedUids = new Set(JSON.parse(saved));
     } catch (e) {
         blockedUids = new Set();
+    }
+}
+
+// 찜 목록도 닉네임·차단목록과 똑같이 기기에 저장해요.
+// (예전에는 메모리에만 있어서 앱을 껐다 켜면 찜이 전부 사라졌어요)
+function loadFavorites(){
+    try {
+        const saved = localStorage.getItem('runmate_favorites');
+        if (saved) favorites = new Set(JSON.parse(saved));
+    } catch (e) {
+        favorites = new Set();
+    }
+}
+
+function saveFavorites(){
+    try {
+        localStorage.setItem('runmate_favorites', JSON.stringify([...favorites]));
+    } catch (e) {
+        // 시크릿 모드 등 저장이 막힌 환경이면 이번 세션에서만 유지돼요
     }
 }
 
@@ -2526,8 +2589,19 @@ function starString(level){
 }
 
 // 유저들이 매긴 평점의 평균 (코스마다 ratingSum/ratingCount로 누적)
+// 코드에 하드코딩된 기본 평점(ratingSum/ratingCount)에 Firestore에 저장된
+// 실제 유저 평점을 얹어서 계산해요. courseRatings는 코스+유저당 문서 1개라
+// 한 사람이 여러 번 눌러도 덮어쓰기만 되고 중복 집계되지 않아요.
 function avgRating(course){
-    return course.ratingSum / course.ratingCount;
+    const agg = ratingAggregates[course.id];
+    const sum = course.ratingSum + (agg ? agg.sum : 0);
+    const count = course.ratingCount + (agg ? agg.count : 0);
+    return count > 0 ? sum / count : 0;
+}
+
+function ratingCountOf(course){
+    const agg = ratingAggregates[course.id];
+    return course.ratingCount + (agg ? agg.count : 0);
 }
 
 function avgRatingDisplay(course){
@@ -2671,6 +2745,7 @@ function toggleFavorite(id, event){
     } else {
         favorites.add(id);
     }
+    saveFavorites();
 
     const btn = event.currentTarget;
     if (btn) {
@@ -2858,7 +2933,7 @@ function updateDetailRatingUI(opts){
     const course = courses.find(c => c.id === currentDetailId);
     if (!course) return;
 
-    document.getElementById('detailRating').textContent = `${avgRatingDisplay(course)} (${course.ratingCount}명)`;
+    document.getElementById('detailRating').textContent = `${avgRatingDisplay(course)} (${ratingCountOf(course)}명)`;
 
     const myRating = userRatings.get(course.id) || 0;
     // 애니메이션(animateStarFill)이 이미 별 채우기를 처리했을 땐 여기서 다시 덮어쓰지 않아요
@@ -2889,24 +2964,46 @@ function animateStarFill(stars){
     });
 }
 
-function submitRating(stars, event){
+async function submitRating(stars, event){
     if (event) event.stopPropagation();
     if (!currentDetailId) return;
     const course = courses.find(c => c.id === currentDetailId);
     if (!course) return;
 
-    const prev = userRatings.get(course.id);
-    if (prev != null) {
-        course.ratingSum += (stars - prev);
-    } else {
-        course.ratingSum += stars;
-        course.ratingCount += 1;
+    if (!firebaseReady) {
+        alert('아직 서버 연결이 안 됐어요. 잠시 후 다시 시도해주세요.');
+        return;
     }
-    userRatings.set(course.id, stars);
 
+    const nickname = ensureNickname();
+    if (!nickname) return;
+
+    let uid;
+    try {
+        uid = await ensureAuth();
+    } catch (e) {
+        alert('로그인 처리 중 문제가 생겼어요. 잠시 후 다시 시도해주세요.');
+        return;
+    }
+
+    // 화면은 먼저 반응시키고(낙관적 업데이트), 저장은 뒤에서 처리해요
     animateStarFill(stars);
+    userRatings.set(course.id, stars);
     updateDetailRatingUI({ skipStars: true });
-    render();
+
+    try {
+        await db.collection('courseRatings').doc(`${uid}_${course.id}`).set({
+            courseId: course.id,
+            uid,
+            nickname,
+            stars,
+            updatedAt: new Date()
+        });
+        // 평균값 갱신은 실시간 리스너가 알아서 해줘요
+    } catch (e) {
+        console.error(e);
+        alert('평점을 저장하는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
+    }
 }
 
 function closeDetail(){
@@ -2932,8 +3029,11 @@ function toggleFavoriteFromDetail(){
     } else {
         favorites.add(currentDetailId);
     }
+    saveFavorites();
     updateDetailHeartBtn({ animate: true });
     renderFavoritesWidget();
+    // 뒤에 깔린 목록의 하트도 같이 맞춰줘요 (찜 탭이면 카드가 빠져야 하고요)
+    render();
 }
 
 // ===== 공유하기 =====
@@ -2991,8 +3091,8 @@ function roomCardTemplate(room){
             <span class="room-status ${statusClass}">${statusText}</span>
             <span class="room-capacity">${filled}/${room.capacity}명</span>
         </div>
-        <h4>${room.title}</h4>
-        <p class="room-meta">${formatRoomDatetime(room.datetime)} · 방장 ${room.hostNickname}</p>
+        <h4>${esc(room.title)}</h4>
+        <p class="room-meta">${formatRoomDatetime(room.datetime)} · 방장 ${esc(room.hostNickname)}</p>
     </div>`;
 }
 
@@ -3226,7 +3326,7 @@ function renderRoomDetail(room){
     document.getElementById('roomCapacityFill').style.width = Math.min(100, (filled / room.capacity) * 100) + '%';
     document.getElementById('roomCapacityText').textContent = `${filled}/${room.capacity}명 모집`;
     document.getElementById('roomParticipantsList').innerHTML =
-        room.participants.map(p => `<span class="room-participant-chip">${participantNickname(p)}</span>`).join('');
+        room.participants.map(p => `<span class="room-participant-chip">${esc(participantNickname(p))}</span>`).join('');
 
     const meetingWrap = document.getElementById('roomMeetingPointWrap');
     if (room.meetingPoint) {
@@ -3239,6 +3339,9 @@ function renderRoomDetail(room){
     // 방장이면 삭제 버튼, 참여자(또는 방문자)면 신고/차단 버튼을 보여줘요
     document.getElementById('roomHostActions').style.display = isHost ? 'flex' : 'none';
     document.getElementById('roomGuestActions').style.display = isHost ? 'none' : 'flex';
+    // 나가기는 "참여했지만 방장은 아닌" 경우에만. 이미 완주 인증을 했으면 기록 보존을 위해 숨겨요.
+    document.getElementById('roomLeaveActions').style.display =
+        (!isHost && joined && !hasCheckedIn(room)) ? 'flex' : 'none';
 
     const joinBtn = document.getElementById('roomJoinBtn');
     const kakaoBtn = document.getElementById('roomKakaoBtn');
@@ -3283,7 +3386,7 @@ function renderRoomDetail(room){
                     : '';
 
                 return `<div class="checkin-row">
-                    <span class="${chipClass}">🏁 ${locationBadge}${participantNickname(p)}${confirmedText}</span>
+                    <span class="${chipClass}">🏁 ${locationBadge}${esc(participantNickname(p))}${confirmedText}</span>
                     ${confirmBtnHtml}
                 </div>`;
             }).join('')
@@ -3336,8 +3439,20 @@ async function handleRoomJoin(){
     }
 
     try {
-        await db.collection('rooms').doc(room.id).update({
-            participants: firebase.firestore.FieldValue.arrayUnion({ uid, nickname })
+        // 정원 확인과 추가를 한 번에 처리해요. 예전에는 브라우저에 캐시된 목록으로만
+        // 정원을 확인하고 arrayUnion으로 밀어넣어서, 자리가 1개 남았을 때 두 명이
+        // 동시에 누르면 둘 다 들어가버렸어요.
+        await db.runTransaction(async (tx) => {
+            const roomRef = db.collection('rooms').doc(room.id);
+            const doc = await tx.get(roomRef);
+            if (!doc.exists) throw new Error('ROOM_GONE');
+
+            const data = doc.data();
+            const list = data.participants || [];
+            if (list.some(p => participantUid(p) === uid)) return;  // 이미 참여 중
+            if (list.length >= data.capacity) throw new Error('ROOM_FULL');
+
+            tx.update(roomRef, { participants: [...list, { uid, nickname }] });
         });
         // 성공 표시(체크마크 + 민트색)는 잠깐 보여주고, 곧이어 실시간 리스너가
         // renderRoomDetail을 다시 호출해서 최종적으로 오픈카톡 버튼으로 교체돼요
@@ -3347,7 +3462,15 @@ async function handleRoomJoin(){
         }
     } catch (e) {
         console.error(e);
-        alert('참여하는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
+        if (e.message === 'ROOM_FULL') {
+            alert('아쉽게도 방금 정원이 찼어요.');
+        } else if (e.message === 'ROOM_GONE') {
+            alert('방장이 방을 삭제했어요.');
+            closeRoomDetail();
+            return;
+        } else {
+            alert('참여하는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
+        }
         if (joinBtn) {
             joinBtn.disabled = false;
             joinBtn.innerHTML = '<span class="btn-result-icon">✕</span> 다시 시도';
@@ -3485,6 +3608,46 @@ async function confirmPeer(targetUid, event){
     } catch (e) {
         console.error(e);
         alert('확인 처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
+    }
+}
+
+// 참여자가 스스로 방에서 빠져나가는 기능.
+// 방장은 쓸 수 없어요 (방장이 빠지면 방이 주인 없는 상태가 되니까, 방장은 '삭제하기'를 씁니다)
+async function leaveRoom(){
+    if (!firebaseReady) {
+        alert('아직 서버 연결이 안 됐어요.');
+        return;
+    }
+    const room = rooms.find(r => r.id === currentRoomId);
+    if (!room || !myUid) return;
+
+    const isHost = room.hostUid ? (room.hostUid === myUid) : (room.hostNickname === myNickname);
+    if (isHost) {
+        alert('방장은 나갈 수 없어요. 모임을 없애려면 "삭제하기"를 눌러주세요.');
+        return;
+    }
+
+    if (!confirm('이 방에서 나갈까요?\n\n자리가 다시 비어서 다른 분이 들어올 수 있어요.\n나중에 다시 참여할 수도 있습니다.')) return;
+
+    try {
+        await db.runTransaction(async (tx) => {
+            const roomRef = db.collection('rooms').doc(room.id);
+            const doc = await tx.get(roomRef);
+            if (!doc.exists) throw new Error('ROOM_GONE');
+
+            const data = doc.data();
+            const next = (data.participants || []).filter(p => participantUid(p) !== myUid);
+            tx.update(roomRef, { participants: next });
+        });
+        closeRoomDetail();
+    } catch (e) {
+        console.error(e);
+        if (e.message === 'ROOM_GONE') {
+            alert('방장이 이미 방을 삭제했어요.');
+            closeRoomDetail();
+        } else {
+            alert('나가는 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.');
+        }
     }
 }
 
@@ -3715,7 +3878,7 @@ function cardTemplate(course, opts){
             <div class="stat-row">
                 <span class="stat-item">
                     <span class="stat-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg></span>
-                    <span class="stat-num">${avgRatingDisplay(course)}</span><span class="stat-count">(${course.ratingCount})</span>
+                    <span class="stat-num">${avgRatingDisplay(course)}</span><span class="stat-count">(${ratingCountOf(course)})</span>
                 </span>
                 <span class="stat-item">
                     <span class="stat-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M2 12c2-4 4 4 6 0s4 4 6 0 4 4 6 0"/></svg></span>
@@ -3852,6 +4015,7 @@ function myRoomCardTemplate(room){
     const filled = room.participants.length;
     const isFull = filled >= room.capacity;
     const past = isPastRoom(room);
+    const hostBlocked = room.hostUid && blockedUids.has(room.hostUid);
 
     let statusClass = '';
     let statusText = '모집중';
@@ -3863,14 +4027,21 @@ function myRoomCardTemplate(room){
         statusText = '마감';
     }
 
+    // 차단한 방장의 방은 코스 목록에선 안 보이지만, 내가 이미 참여 중이면
+    // 마이페이지에는 남겨둬요. 여기서 숨겨버리면 나갈 방법이 없어지거든요.
+    const blockedNote = hostBlocked
+        ? '<p class="room-meta" style="color:#c62828;margin-top:3px;">차단한 방장의 모임이에요</p>'
+        : '';
+
     return `
     <div class="room-card ${past ? 'past-room' : ''}" onclick="openRoomDetail('${room.id}')">
         <div class="room-card-top">
             <span class="room-status ${statusClass}">${statusText}</span>
             <span class="room-capacity">${filled}/${room.capacity}명</span>
         </div>
-        <h4>${room.title}</h4>
-        <p class="room-meta">${course ? course.title : ''} · ${formatRoomDatetime(room.datetime)}</p>
+        <h4>${esc(room.title)}</h4>
+        <p class="room-meta">${course ? esc(course.title) : ''} · ${formatRoomDatetime(room.datetime)}</p>
+        ${blockedNote}
     </div>`;
 }
 
@@ -3970,12 +4141,14 @@ try {
     myNickname = null;
 }
 loadBlockedUids();
+loadFavorites();
 renderRegionList();
 updateFilterLabel();
 renderTodayPick();
 render();
 initRoomsListener();
 initCourseCandidatesListener();
+initCourseRatingsListener();
 populateCandidateDistrictSelect();
 
 // PWA 서비스 워커 등록 (홈 화면 추가/설치 기능을 위해 필요해요)

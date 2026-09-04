@@ -1,7 +1,7 @@
 {
-  "name": "RunMate - 부산 러닝 모임",
+  "name": "RunMate - 부산 스포츠 모임",
   "short_name": "RunMate",
-  "description": "부산 러닝 코스 추천 및 스포츠 모임 매칭 플랫폼",
+  "description": "러닝·자전거·등산 코스 추천과 스포츠 모임 매칭 플랫폼",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
